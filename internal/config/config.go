@@ -13,6 +13,7 @@ type Config struct {
 	BasePath string // Panel base path, e.g. "/" or "/custom/"
 	Username string
 	Password string
+	APIToken string // Optional Bearer API token (3x-ui v3.2.8+). When set, /panel/api/* calls bypass CSRF.
 }
 
 // Load reads configuration from environment variables and validates it.
@@ -22,6 +23,7 @@ func Load() (*Config, error) {
 		BasePath: os.Getenv("XUI_BASE_PATH"),
 		Username: os.Getenv("XUI_USERNAME"),
 		Password: os.Getenv("XUI_PASSWORD"),
+		APIToken: os.Getenv("XUI_API_TOKEN"),
 	}
 
 	if cfg.BasePath == "" {
@@ -42,11 +44,16 @@ func (c *Config) validate() error {
 	if c.Host == "" {
 		errs = append(errs, "XUI_HOST is required (e.g. http://localhost:2053)")
 	}
-	if c.Username == "" {
-		errs = append(errs, "XUI_USERNAME is required")
+
+	hasCreds := c.Username != "" && c.Password != ""
+
+	// Either a full credential pair or an API token must be present.
+	if !hasCreds && c.APIToken == "" {
+		errs = append(errs, "authentication required: set XUI_API_TOKEN, or both XUI_USERNAME and XUI_PASSWORD")
 	}
-	if c.Password == "" {
-		errs = append(errs, "XUI_PASSWORD is required")
+	// Partial credentials are almost certainly a misconfiguration.
+	if !hasCreds && (c.Username != "" || c.Password != "") {
+		errs = append(errs, "XUI_USERNAME and XUI_PASSWORD must be set together")
 	}
 
 	if len(errs) > 0 {

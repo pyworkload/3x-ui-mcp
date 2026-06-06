@@ -28,6 +28,9 @@ Thumbs.db
 .env
 .env.*
 
+# Local MCP server config (contains panel credentials)
+.mcp.json
+
 # Claude Code
 .claude/
 CLAUDE.md

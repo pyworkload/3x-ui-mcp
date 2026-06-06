@@ -27,11 +27,14 @@ type Inbound struct {
 	Sniffing       string `json:"sniffing"`
 }
 
-// ClientConfig represents a client within an inbound's settings JSON.
+// ClientConfig represents a 3x-ui client (model.Client). It is sent both inside
+// a ClientCreatePayload (clients/add) and as the bare body of clients/update/:email.
 type ClientConfig struct {
-	ID         string `json:"id,omitempty"`
-	Password   string `json:"password,omitempty"`
-	Flow       string `json:"flow,omitempty"`
+	ID         string `json:"id,omitempty"`       // UUID (VMess/VLESS)
+	Security   string `json:"security,omitempty"` // Cipher/security method (e.g. Shadowsocks)
+	Password   string `json:"password,omitempty"` // Password (Trojan/Shadowsocks)
+	Flow       string `json:"flow,omitempty"`     // XTLS flow (VLESS)
+	Auth       string `json:"auth,omitempty"`     // Auth password (Hysteria)
 	Email      string `json:"email"`
 	LimitIP    int    `json:"limitIp"`
 	TotalGB    int64  `json:"totalGB"`
@@ -39,8 +42,15 @@ type ClientConfig struct {
 	Enable     bool   `json:"enable"`
 	TgID       int64  `json:"tgId"`
 	SubID      string `json:"subId"`
+	Group      string `json:"group,omitempty"` // Logical grouping label
 	Comment    string `json:"comment,omitempty"`
 	Reset      int    `json:"reset"`
+}
+
+// ClientCreatePayload is the body for clients/add and each element of clients/bulkCreate.
+type ClientCreatePayload struct {
+	Client     ClientConfig `json:"client"`
+	InboundIds []int        `json:"inboundIds"`
 }
 
 // InboundSettings wraps the clients array within inbound settings JSON.
