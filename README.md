@@ -9,8 +9,10 @@ MCP (Model Context Protocol) server for [3x-ui](https://github.com/MHSanaei/3x-u
 
 ## Features
 
-- 40 MCP tools covering the full 3x-ui API
-- Automatic session management with transparent re-authentication
+- 46 MCP tools covering the full 3x-ui API (3x-ui v3.2.8+)
+- Two auth modes: session login with CSRF, or a Bearer API token (`XUI_API_TOKEN`)
+- Automatic session management with transparent re-authentication and CSRF refresh
+- Email-keyed client model: attach/detach across inbounds, bulk operations, paged listing
 - Stdio transport for seamless LLM integration
 - Zero external dependencies beyond the MCP SDK
 
@@ -60,10 +62,25 @@ Download from [Releases](https://github.com/pyworkload/3x-ui-mcp/releases), then
 | Variable | Required | Description | Example |
 |---|---|---|---|
 | `XUI_HOST` | Yes | Panel URL | `http://localhost:2053` |
-| `XUI_USERNAME` | Yes | Admin username | `admin` |
-| `XUI_PASSWORD` | Yes | Admin password | `admin` |
+| `XUI_USERNAME` | Yes¹ | Admin username | `admin` |
+| `XUI_PASSWORD` | Yes¹ | Admin password | `admin` |
+| `XUI_API_TOKEN` | No | Bearer API token (3x-ui v3.2.8+). Bypasses CSRF for `/panel/api/*` | `eyJ…` |
 | `XUI_BASE_PATH` | No | Panel base path (default: `/`) | `/xui/` |
 | `XUI_LOG_LEVEL` | No | Log level (default: `info`) | `debug`, `info`, `warn`, `error` |
+
+¹ Provide **either** `XUI_USERNAME`+`XUI_PASSWORD` **or** `XUI_API_TOKEN`.
+
+**Auth modes (3x-ui v3.2.8 added CSRF protection + API tokens):**
+
+- **Session + CSRF** (username/password): works for every tool. The client logs in,
+  tracks the session CSRF token, and replays it on write requests, refreshing
+  automatically when it goes stale.
+- **Bearer API token** (`XUI_API_TOKEN`): the token is sent on every request and
+  the panel accepts it for `/panel/api/*` routes (inbounds, clients, server)
+  without CSRF. Settings and Xray-template tools live under `/panel/*`, which the
+  panel still gates by session — so to use those alongside a token, also set
+  `XUI_USERNAME`/`XUI_PASSWORD` (the client establishes a session on demand).
+  Create a token in the panel under **Settings → API Tokens**.
 
 ## MCP Tools
 
@@ -77,24 +94,32 @@ Download from [Releases](https://github.com/pyworkload/3x-ui-mcp/releases), then
 | `update_inbound` | Update an existing inbound |
 | `delete_inbound` | Delete an inbound |
 
-### Client Management (14 tools)
+### Client Management (20 tools)
+
+Clients are email-keyed entities that can be attached to several inbounds at once.
 
 | Tool | Description |
 |---|---|
-| `add_client` | Add a client to an inbound |
-| `update_client` | Update client configuration |
-| `delete_client` | Delete a client by inbound ID and UUID |
-| `delete_client_by_email` | Delete a client by email |
+| `add_client` | Create a client and attach it to one or more inbounds (`inbound_ids`) |
+| `update_client` | Update a client by email (only supplied fields change; UUID preserved) |
+| `delete_client` | Delete a client by email (optional `keep_traffic`) |
+| `get_client` | Get a client's full config and its inbound attachments, by email |
+| `list_clients` | Paged, searchable, filterable client list |
+| `attach_client` | Attach an existing client to more inbounds |
+| `detach_client` | Detach a client from given inbounds |
+| `bulk_create_clients` | Create many clients across the same inbounds |
+| `bulk_delete_clients` | Delete many clients by email |
 | `get_client_traffic` | Get client traffic stats by email |
-| `get_client_traffic_by_id` | Get client traffic stats by UUID |
 | `get_client_ips` | Get IPs used by a client |
 | `clear_client_ips` | Clear recorded client IPs |
-| `reset_client_traffic` | Reset traffic counters for a client |
+| `reset_client_traffic` | Reset traffic counters for a client by email |
 | `reset_all_traffics` | Reset all inbound traffic counters |
-| `reset_all_client_traffics` | Reset all client traffic counters |
-| `delete_depleted_clients` | Delete clients with exhausted traffic/expired |
+| `reset_all_client_traffics` | Reset traffic for every client (panel-wide) |
+| `bulk_reset_traffic` | Reset traffic for a specific set of clients |
+| `delete_depleted_clients` | Delete clients with exhausted traffic/expired (panel-wide) |
 | `get_online_clients` | List currently connected clients |
-| `update_client_traffic` | Update client traffic limits |
+| `get_last_online` | Last-online timestamp for every client |
+| `update_client_traffic` | Set specific upload/download byte counters for a client |
 
 ### Server Management (11 tools)
 

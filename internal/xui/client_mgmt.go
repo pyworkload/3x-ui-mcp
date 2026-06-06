@@ -2,93 +2,144 @@ package xui
 
 import (
 	"context"
-	"fmt"
 	"net/url"
+	"strconv"
+	"strings"
 )
 
-// --- Client management API methods ---
+// --- Client management API methods (3x-ui v3.2.8 ClientController, /panel/api/clients/*) ---
+//
+// Clients are first-class, email-keyed entities that can be attached to several
+// inbounds at once. All addressing is by email.
 
-// AddClient adds a client to an inbound. data must contain "id" (inbound ID)
-// and "settings" (JSON string with clients array).
-func (c *Client) AddClient(ctx context.Context, data map[string]any) (*Response, error) {
-	return c.PostJSON(ctx, "panel/api/inbounds/addClient", data)
+const clientsBase = "panel/api/clients/"
+
+// joinInts renders []int as a comma-separated string for query params.
+func joinInts(ids []int) string {
+	parts := make([]string, len(ids))
+	for i, id := range ids {
+		parts[i] = strconv.Itoa(id)
+	}
+	return strings.Join(parts, ",")
 }
 
-// UpdateClient updates a client within an inbound.
-// clientID is the UUID/ID of the client to update.
-func (c *Client) UpdateClient(ctx context.Context, clientID string, data map[string]any) (*Response, error) {
-	return c.PostJSON(ctx, fmt.Sprintf("panel/api/inbounds/updateClient/%s", clientID), data)
+// AddClient creates a client and attaches it to the inbounds in the payload.
+func (c *Client) AddClient(ctx context.Context, payload ClientCreatePayload) (*Response, error) {
+	return c.PostJSON(ctx, clientsBase+"add", payload)
 }
 
-// DeleteClient removes a client from an inbound by inbound ID and client UUID.
-func (c *Client) DeleteClient(ctx context.Context, inboundID int, clientID string) (*Response, error) {
-	return c.Post(ctx, fmt.Sprintf("panel/api/inbounds/%d/delClient/%s", inboundID, clientID))
+// BulkCreateClients creates multiple clients in one call.
+func (c *Client) BulkCreateClients(ctx context.Context, payloads []ClientCreatePayload) (*Response, error) {
+	return c.PostJSON(ctx, clientsBase+"bulkCreate", payloads)
 }
 
-// DeleteClientByEmail removes a client from an inbound by email.
-func (c *Client) DeleteClientByEmail(ctx context.Context, inboundID int, email string) (*Response, error) {
-	return c.Post(ctx, fmt.Sprintf("panel/api/inbounds/%d/delClientByEmail/%s", inboundID, email))
+// UpdateClient updates a client identified by email. inboundIds, when non-empty,
+// restricts the update to those attachments (the panel's ?inboundIds filter).
+func (c *Client) UpdateClient(ctx context.Context, email string, client ClientConfig, inboundIds []int) (*Response, error) {
+	path := clientsBase + "update/" + url.PathEscape(email)
+	if len(inboundIds) > 0 {
+		path += "?inboundIds=" + url.QueryEscape(joinInts(inboundIds))
+	}
+	return c.PostJSON(ctx, path, client)
+}
+
+// DeleteClient removes a client by email. keepTraffic preserves its traffic stats.
+func (c *Client) DeleteClient(ctx context.Context, email string, keepTraffic bool) (*Response, error) {
+	path := clientsBase + "del/" + url.PathEscape(email)
+	if keepTraffic {
+		path += "?keepTraffic=1"
+	}
+	return c.Post(ctx, path)
+}
+
+// BulkDeleteClients removes multiple clients by email.
+func (c *Client) BulkDeleteClients(ctx context.Context, emails []string, keepTraffic bool) (*Response, error) {
+	return c.PostJSON(ctx, clientsBase+"bulkDel", map[string]any{
+		"emails":      emails,
+		"keepTraffic": keepTraffic,
+	})
+}
+
+// GetClient returns a single client (with its inbound attachments) by email.
+func (c *Client) GetClient(ctx context.Context, email string) (*Response, error) {
+	return c.Get(ctx, clientsBase+"get/"+url.PathEscape(email))
+}
+
+// ListClientsPaged returns a filtered, paginated client list.
+// query may carry page, pageSize, search, filter, protocol, inbound, group, sort, order.
+func (c *Client) ListClientsPaged(ctx context.Context, query url.Values) (*Response, error) {
+	path := clientsBase + "list/paged"
+	if enc := query.Encode(); enc != "" {
+		path += "?" + enc
+	}
+	return c.Get(ctx, path)
+}
+
+// AttachClient attaches an existing client to additional inbounds.
+func (c *Client) AttachClient(ctx context.Context, email string, inboundIds []int) (*Response, error) {
+	return c.PostJSON(ctx, clientsBase+url.PathEscape(email)+"/attach", map[string]any{
+		"inboundIds": inboundIds,
+	})
+}
+
+// DetachClient detaches a client from the given inbounds.
+func (c *Client) DetachClient(ctx context.Context, email string, inboundIds []int) (*Response, error) {
+	return c.PostJSON(ctx, clientsBase+url.PathEscape(email)+"/detach", map[string]any{
+		"inboundIds": inboundIds,
+	})
 }
 
 // GetClientTraffic returns traffic stats for a client by email.
 func (c *Client) GetClientTraffic(ctx context.Context, email string) (*Response, error) {
-	return c.Get(ctx, fmt.Sprintf("panel/api/inbounds/getClientTraffics/%s", email))
-}
-
-// GetClientTrafficByID returns traffic stats for a client by UUID.
-func (c *Client) GetClientTrafficByID(ctx context.Context, id string) (*Response, error) {
-	return c.Get(ctx, fmt.Sprintf("panel/api/inbounds/getClientTrafficsById/%s", id))
+	return c.Get(ctx, clientsBase+"traffic/"+url.PathEscape(email))
 }
 
 // GetClientIPs returns IP addresses recorded for a client.
 func (c *Client) GetClientIPs(ctx context.Context, email string) (*Response, error) {
-	return c.Post(ctx, fmt.Sprintf("panel/api/inbounds/clientIps/%s", email))
+	return c.Post(ctx, clientsBase+"ips/"+url.PathEscape(email))
 }
 
 // ClearClientIPs clears recorded IP addresses for a client.
 func (c *Client) ClearClientIPs(ctx context.Context, email string) (*Response, error) {
-	return c.Post(ctx, fmt.Sprintf("panel/api/inbounds/clearClientIps/%s", email))
+	return c.Post(ctx, clientsBase+"clearIps/"+url.PathEscape(email))
 }
 
-// ResetClientTraffic resets traffic counters for a client within an inbound.
-func (c *Client) ResetClientTraffic(ctx context.Context, inboundID int, email string) (*Response, error) {
-	return c.Post(ctx, fmt.Sprintf("panel/api/inbounds/%d/resetClientTraffic/%s", inboundID, email))
+// ResetClientTraffic resets traffic counters for a single client by email.
+func (c *Client) ResetClientTraffic(ctx context.Context, email string) (*Response, error) {
+	return c.Post(ctx, clientsBase+"resetTraffic/"+url.PathEscape(email))
 }
 
-// ResetAllTraffics resets all inbound traffic counters.
-func (c *Client) ResetAllTraffics(ctx context.Context) (*Response, error) {
-	return c.Post(ctx, "panel/api/inbounds/resetAllTraffics")
+// ResetAllClientTraffics resets traffic counters for every client (panel-wide).
+func (c *Client) ResetAllClientTraffics(ctx context.Context) (*Response, error) {
+	return c.Post(ctx, clientsBase+"resetAllTraffics")
 }
 
-// ResetAllClientTraffics resets traffic for all clients in an inbound.
-func (c *Client) ResetAllClientTraffics(ctx context.Context, inboundID int) (*Response, error) {
-	return c.Post(ctx, fmt.Sprintf("panel/api/inbounds/resetAllClientTraffics/%d", inboundID))
+// BulkResetTraffic resets traffic counters for the given client emails.
+func (c *Client) BulkResetTraffic(ctx context.Context, emails []string) (*Response, error) {
+	return c.PostJSON(ctx, clientsBase+"bulkResetTraffic", map[string]any{
+		"emails": emails,
+	})
 }
 
-// DeleteDepletedClients removes clients that exhausted their traffic/time.
-func (c *Client) DeleteDepletedClients(ctx context.Context, inboundID int) (*Response, error) {
-	return c.Post(ctx, fmt.Sprintf("panel/api/inbounds/delDepletedClients/%d", inboundID))
+// DeleteDepletedClients removes clients that exhausted their traffic/time (panel-wide).
+func (c *Client) DeleteDepletedClients(ctx context.Context) (*Response, error) {
+	return c.Post(ctx, clientsBase+"delDepleted")
 }
 
 // GetOnlineClients returns currently connected clients.
 func (c *Client) GetOnlineClients(ctx context.Context) (*Response, error) {
-	return c.Post(ctx, "panel/api/inbounds/onlines")
+	return c.Post(ctx, clientsBase+"onlines")
 }
 
-// UpdateClientTraffic sets specific traffic values for a client.
+// GetLastOnline returns last-online timestamps for all clients.
+func (c *Client) GetLastOnline(ctx context.Context) (*Response, error) {
+	return c.Post(ctx, clientsBase+"lastOnline")
+}
+
+// UpdateClientTraffic sets specific upload/download byte values for a client.
 func (c *Client) UpdateClientTraffic(ctx context.Context, email string, upload, download int64) (*Response, error) {
-	return c.PostJSON(ctx, fmt.Sprintf("panel/api/inbounds/updateClientTraffic/%s", email), map[string]int64{
+	return c.PostJSON(ctx, clientsBase+"updateTraffic/"+url.PathEscape(email), map[string]int64{
 		"upload":   upload,
 		"download": download,
 	})
-}
-
-// GetLastOnline returns last online timestamps for all clients.
-func (c *Client) GetLastOnline(ctx context.Context) (*Response, error) {
-	return c.Post(ctx, "panel/api/inbounds/lastOnline")
-}
-
-// SearchInbounds searches inbounds (via query, not a standard API — reserved for extension).
-func (c *Client) SearchInbounds(ctx context.Context, query string) (*Response, error) {
-	return c.PostForm(ctx, "panel/api/inbounds/search", url.Values{"query": {query}})
 }

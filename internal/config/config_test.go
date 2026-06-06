@@ -176,6 +176,54 @@ func TestLoad_MultipleFieldsMissing(t *testing.T) {
 	}
 }
 
+func TestLoad_TokenOnly_NoCredentials(t *testing.T) {
+	t.Setenv("XUI_HOST", "http://localhost:2053")
+	t.Setenv("XUI_USERNAME", "")
+	t.Setenv("XUI_PASSWORD", "")
+	t.Setenv("XUI_API_TOKEN", "tok-123")
+	t.Setenv("XUI_BASE_PATH", "")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("token-only config should be valid, got error: %v", err)
+	}
+	if cfg.APIToken != "tok-123" {
+		t.Errorf("APIToken = %q, want %q", cfg.APIToken, "tok-123")
+	}
+}
+
+func TestLoad_TokenWithCredentials(t *testing.T) {
+	t.Setenv("XUI_HOST", "http://localhost:2053")
+	t.Setenv("XUI_USERNAME", "admin")
+	t.Setenv("XUI_PASSWORD", "secret")
+	t.Setenv("XUI_API_TOKEN", "tok-123")
+	t.Setenv("XUI_BASE_PATH", "")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.APIToken != "tok-123" || cfg.Username != "admin" || cfg.Password != "secret" {
+		t.Errorf("unexpected config: %+v", cfg)
+	}
+}
+
+func TestLoad_PartialCredentialsWithToken(t *testing.T) {
+	t.Setenv("XUI_HOST", "http://localhost:2053")
+	t.Setenv("XUI_USERNAME", "admin")
+	t.Setenv("XUI_PASSWORD", "")
+	t.Setenv("XUI_API_TOKEN", "tok-123")
+	t.Setenv("XUI_BASE_PATH", "")
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("expected error for partial credentials (username without password), got nil")
+	}
+	if got := err.Error(); !contains(got, "set together") {
+		t.Errorf("error should explain credentials must be set together, got: %s", got)
+	}
+}
+
 // contains is a small helper to avoid importing strings in tests.
 func contains(s, substr string) bool {
 	for i := 0; i <= len(s)-len(substr); i++ {

@@ -44,6 +44,61 @@ func formatResponse(resp *xui.Response) string {
 	return string(resp.Obj)
 }
 
+// bytesPerGB converts the GB units used by MCP tool params to the bytes the panel stores.
+const bytesPerGB = 1073741824
+
+// clientRecordView parses the "client" object returned by GET clients/get/:email.
+// The panel returns a ClientRecord there, whose UUID lives under "uuid" (not "id"),
+// so we map it explicitly back onto a ClientConfig for round-tripping into updates.
+type clientRecordView struct {
+	UUID       string `json:"uuid"`
+	Security   string `json:"security"`
+	Password   string `json:"password"`
+	Auth       string `json:"auth"`
+	Flow       string `json:"flow"`
+	Email      string `json:"email"`
+	LimitIP    int    `json:"limitIp"`
+	TotalGB    int64  `json:"totalGB"`
+	ExpiryTime int64  `json:"expiryTime"`
+	Enable     bool   `json:"enable"`
+	TgID       int64  `json:"tgId"`
+	SubID      string `json:"subId"`
+	Group      string `json:"group"`
+	Comment    string `json:"comment"`
+	Reset      int    `json:"reset"`
+}
+
+func (v clientRecordView) toConfig() xui.ClientConfig {
+	return xui.ClientConfig{
+		ID:         v.UUID,
+		Security:   v.Security,
+		Password:   v.Password,
+		Auth:       v.Auth,
+		Flow:       v.Flow,
+		Email:      v.Email,
+		LimitIP:    v.LimitIP,
+		TotalGB:    v.TotalGB,
+		ExpiryTime: v.ExpiryTime,
+		Enable:     v.Enable,
+		TgID:       v.TgID,
+		SubID:      v.SubID,
+		Group:      v.Group,
+		Comment:    v.Comment,
+		Reset:      v.Reset,
+	}
+}
+
+// parseClient extracts the current client config from a GET clients/get/:email response.
+func parseClient(resp *xui.Response) (xui.ClientConfig, error) {
+	var wrap struct {
+		Client clientRecordView `json:"client"`
+	}
+	if err := json.Unmarshal(resp.Obj, &wrap); err != nil {
+		return xui.ClientConfig{}, fmt.Errorf("parsing client record: %w", err)
+	}
+	return wrap.Client.toConfig(), nil
+}
+
 // generateUUID generates a random UUID v4.
 func generateUUID() string {
 	b := make([]byte, 16)

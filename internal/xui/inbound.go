@@ -38,3 +38,8 @@ func (c *Client) ImportInbound(ctx context.Context, jsonData string) (*Response,
 		"data": {jsonData},
 	})
 }
+
+// ResetAllTraffics resets traffic counters for all inbounds.
+func (c *Client) ResetAllTraffics(ctx context.Context) (*Response, error) {
+	return c.Post(ctx, "panel/api/inbounds/resetAllTraffics")
+}

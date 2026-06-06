@@ -14,6 +14,18 @@ import (
 	"github.com/pyworkload/3x-ui-mcp/internal/config"
 )
 
+const testCSRFToken = "test-csrf-token"
+
+// writeCSRFIfRequested answers the public (/csrf-token) and authenticated
+// (/panel/csrf-token) CSRF endpoints. Returns true if it handled the request.
+func writeCSRFIfRequested(w http.ResponseWriter, r *http.Request) bool {
+	if r.URL.Path == "/csrf-token" || r.URL.Path == "/panel/csrf-token" {
+		_ = json.NewEncoder(w).Encode(Response{Success: true, Obj: json.RawMessage(`"` + testCSRFToken + `"`)})
+		return true
+	}
+	return false
+}
+
 // newTestServer creates an httptest.Server and a Client wired to it.
 // The handler is called for every request.
 func newTestServer(t *testing.T, handler http.HandlerFunc) (*httptest.Server, *Client) {
@@ -33,12 +45,30 @@ func newTestServer(t *testing.T, handler http.HandlerFunc) (*httptest.Server, *C
 	return ts, client
 }
 
+// newTestServerWithToken wires a Client configured for Bearer-token auth.
+func newTestServerWithToken(t *testing.T, token string, handler http.HandlerFunc) (*httptest.Server, *Client) {
+	t.Helper()
+	ts := httptest.NewServer(handler)
+	t.Cleanup(ts.Close)
+
+	cfg := &config.Config{
+		Host:     ts.URL,
+		BasePath: "/",
+		Username: "admin",
+		Password: "admin",
+		APIToken: token,
+	}
+	client := NewClient(cfg, slog.Default())
+	return ts, client
+}
+
 func TestNewClient_CorrectConfig(t *testing.T) {
 	cfg := &config.Config{
 		Host:     "http://example.com",
 		BasePath: "/panel/",
 		Username: "user1",
 		Password: "pass1",
+		APIToken: "tok",
 	}
 	logger := slog.Default()
 	c := NewClient(cfg, logger)
@@ -51,6 +81,9 @@ func TestNewClient_CorrectConfig(t *testing.T) {
 	}
 	if c.password != "pass1" {
 		t.Errorf("password = %q, want %q", c.password, "pass1")
+	}
+	if c.apiToken != "tok" {
+		t.Errorf("apiToken = %q, want %q", c.apiToken, "tok")
 	}
 	if c.loggedIn {
 		t.Error("expected loggedIn to be false initially")
@@ -65,6 +98,9 @@ func TestNewClient_CorrectConfig(t *testing.T) {
 
 func TestLogin_Success(t *testing.T) {
 	_, client := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if writeCSRFIfRequested(w, r) {
+			return
+		}
 		if r.URL.Path == "/login" {
 			resp := Response{Success: true, Msg: "ok"}
 			json.NewEncoder(w).Encode(resp)
@@ -80,10 +116,16 @@ func TestLogin_Success(t *testing.T) {
 	if !client.loggedIn {
 		t.Error("expected loggedIn to be true after successful login")
 	}
+	if client.csrfToken != testCSRFToken {
+		t.Errorf("csrfToken = %q, want %q", client.csrfToken, testCSRFToken)
+	}
 }
 
 func TestLogin_Failure(t *testing.T) {
 	_, client := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if writeCSRFIfRequested(w, r) {
+			return
+		}
 		if r.URL.Path == "/login" {
 			resp := Response{Success: false, Msg: "invalid credentials"}
 			json.NewEncoder(w).Encode(resp)
@@ -101,10 +143,34 @@ func TestLogin_Failure(t *testing.T) {
 	}
 }
 
+func TestLogin_SendsCSRFHeader(t *testing.T) {
+	var loginCSRF string
+	_, client := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if writeCSRFIfRequested(w, r) {
+			return
+		}
+		if r.URL.Path == "/login" {
+			loginCSRF = r.Header.Get(csrfHeaderName)
+			json.NewEncoder(w).Encode(Response{Success: true})
+			return
+		}
+	})
+
+	if err := client.login(context.Background()); err != nil {
+		t.Fatalf("login error: %v", err)
+	}
+	if loginCSRF != testCSRFToken {
+		t.Errorf("login X-CSRF-Token = %q, want %q", loginCSRF, testCSRFToken)
+	}
+}
+
 func TestAutoAuth_OnFirstRequest(t *testing.T) {
 	var loginCalled atomic.Int32
 
 	_, client := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if writeCSRFIfRequested(w, r) {
+			return
+		}
 		switch r.URL.Path {
 		case "/login":
 			loginCalled.Add(1)
@@ -135,6 +201,9 @@ func TestSessionExpiry_RetriesAfter404(t *testing.T) {
 	var loginCount atomic.Int32
 
 	_, client := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if writeCSRFIfRequested(w, r) {
+			return
+		}
 		switch r.URL.Path {
 		case "/login":
 			loginCount.Add(1)
@@ -177,6 +246,9 @@ func TestRedirectDetection_SessionExpired(t *testing.T) {
 	var loginCount atomic.Int32
 
 	_, client := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if writeCSRFIfRequested(w, r) {
+			return
+		}
 		switch r.URL.Path {
 		case "/login":
 			loginCount.Add(1)
@@ -209,10 +281,54 @@ func TestRedirectDetection_SessionExpired(t *testing.T) {
 	}
 }
 
+func TestCSRF_403RefreshesTokenAndRetries(t *testing.T) {
+	var requestCount atomic.Int32
+	var loginCount atomic.Int32
+
+	_, client := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if writeCSRFIfRequested(w, r) {
+			return
+		}
+		switch r.URL.Path {
+		case "/login":
+			loginCount.Add(1)
+			json.NewEncoder(w).Encode(Response{Success: true})
+		case "/panel/api/clients/add":
+			count := requestCount.Add(1)
+			if count == 1 {
+				// Stale CSRF token → 403 (no body, like gin's AbortWithStatus)
+				w.WriteHeader(http.StatusForbidden)
+				return
+			}
+			json.NewEncoder(w).Encode(Response{Success: true, Msg: "added"})
+		default:
+			t.Errorf("unexpected request path: %s", r.URL.Path)
+		}
+	})
+
+	resp, err := client.PostJSON(context.Background(), "panel/api/clients/add", map[string]string{"x": "y"})
+	if err != nil {
+		t.Fatalf("PostJSON returned error: %v", err)
+	}
+	if !resp.Success {
+		t.Error("expected success after CSRF refresh + retry")
+	}
+	// A 403 should be recovered by refreshing CSRF, NOT by a full re-login.
+	if loginCount.Load() != 1 {
+		t.Errorf("login called %d times, want 1 (no re-login on 403)", loginCount.Load())
+	}
+	if requestCount.Load() != 2 {
+		t.Errorf("endpoint called %d times, want 2", requestCount.Load())
+	}
+}
+
 func TestGet_Method(t *testing.T) {
 	var capturedMethod string
 
 	_, client := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if writeCSRFIfRequested(w, r) {
+			return
+		}
 		if r.URL.Path == "/login" {
 			json.NewEncoder(w).Encode(Response{Success: true})
 			return
@@ -230,12 +346,56 @@ func TestGet_Method(t *testing.T) {
 	}
 }
 
+func TestCSRFToken_OnUnsafeMethodsOnly(t *testing.T) {
+	var getCSRF, postCSRF string
+	var sawGet, sawPost atomic.Bool
+
+	_, client := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if writeCSRFIfRequested(w, r) {
+			return
+		}
+		if r.URL.Path == "/login" {
+			json.NewEncoder(w).Encode(Response{Success: true})
+			return
+		}
+		switch r.Method {
+		case http.MethodGet:
+			sawGet.Store(true)
+			getCSRF = r.Header.Get(csrfHeaderName)
+		case http.MethodPost:
+			sawPost.Store(true)
+			postCSRF = r.Header.Get(csrfHeaderName)
+		}
+		json.NewEncoder(w).Encode(Response{Success: true, Msg: "ok"})
+	})
+
+	if _, err := client.Get(context.Background(), "panel/api/x"); err != nil {
+		t.Fatalf("Get error: %v", err)
+	}
+	if _, err := client.Post(context.Background(), "panel/api/y"); err != nil {
+		t.Fatalf("Post error: %v", err)
+	}
+
+	if !sawGet.Load() || !sawPost.Load() {
+		t.Fatal("expected both GET and POST to reach the server")
+	}
+	if getCSRF != "" {
+		t.Errorf("GET should not carry a CSRF token, got %q", getCSRF)
+	}
+	if postCSRF != testCSRFToken {
+		t.Errorf("POST X-CSRF-Token = %q, want %q", postCSRF, testCSRFToken)
+	}
+}
+
 func TestPostJSON_Method(t *testing.T) {
 	var capturedMethod string
 	var capturedContentType string
 	var capturedBody map[string]any
 
 	_, client := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if writeCSRFIfRequested(w, r) {
+			return
+		}
 		if r.URL.Path == "/login" {
 			json.NewEncoder(w).Encode(Response{Success: true})
 			return
@@ -268,6 +428,9 @@ func TestPostForm_Method(t *testing.T) {
 	var capturedFormValue string
 
 	_, client := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if writeCSRFIfRequested(w, r) {
+			return
+		}
 		if r.URL.Path == "/login" {
 			json.NewEncoder(w).Encode(Response{Success: true})
 			return
@@ -300,6 +463,9 @@ func TestPost_NoBody(t *testing.T) {
 	var capturedContentLength int64
 
 	_, client := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if writeCSRFIfRequested(w, r) {
+			return
+		}
 		if r.URL.Path == "/login" {
 			json.NewEncoder(w).Encode(Response{Success: true})
 			return
@@ -351,6 +517,9 @@ func TestFullURL_Construction(t *testing.T) {
 
 func TestNonJSON_Response(t *testing.T) {
 	_, client := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if writeCSRFIfRequested(w, r) {
+			return
+		}
 		if r.URL.Path == "/login" {
 			json.NewEncoder(w).Encode(Response{Success: true})
 			return
@@ -374,6 +543,9 @@ func TestLogin_SendsCredentials(t *testing.T) {
 	var capturedPassword string
 
 	_, client := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if writeCSRFIfRequested(w, r) {
+			return
+		}
 		if r.URL.Path == "/login" {
 			r.ParseForm()
 			capturedUsername = r.FormValue("username")
@@ -397,6 +569,9 @@ func TestLogin_SendsCredentials(t *testing.T) {
 
 func TestDo_FailsAfterReauthStill404(t *testing.T) {
 	_, client := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if writeCSRFIfRequested(w, r) {
+			return
+		}
 		if r.URL.Path == "/login" {
 			json.NewEncoder(w).Encode(Response{Success: true})
 			return
@@ -408,5 +583,104 @@ func TestDo_FailsAfterReauthStill404(t *testing.T) {
 	_, err := client.Get(context.Background(), "api/missing")
 	if err == nil {
 		t.Fatal("expected error when endpoint returns 404 even after re-auth, got nil")
+	}
+}
+
+func TestBearerMode_SetsAuthHeaderNoLogin(t *testing.T) {
+	var authHeader string
+	var loginCalled atomic.Int32
+
+	_, client := newTestServerWithToken(t, "secret-token", func(w http.ResponseWriter, r *http.Request) {
+		if writeCSRFIfRequested(w, r) {
+			return
+		}
+		if r.URL.Path == "/login" {
+			loginCalled.Add(1)
+			json.NewEncoder(w).Encode(Response{Success: true})
+			return
+		}
+		authHeader = r.Header.Get("Authorization")
+		json.NewEncoder(w).Encode(Response{Success: true, Msg: "ok", Obj: json.RawMessage(`[]`)})
+	})
+
+	resp, err := client.Get(context.Background(), "panel/api/inbounds/list")
+	if err != nil {
+		t.Fatalf("Get returned error: %v", err)
+	}
+	if !resp.Success {
+		t.Error("expected success in bearer mode")
+	}
+	if authHeader != "Bearer secret-token" {
+		t.Errorf("Authorization = %q, want %q", authHeader, "Bearer secret-token")
+	}
+	// A valid token for a /panel/api/* route must not trigger a session login.
+	if loginCalled.Load() != 0 {
+		t.Errorf("login called %d times, want 0 in bearer mode", loginCalled.Load())
+	}
+}
+
+func TestBearerMode_FallsBackToSessionForPanelRoutes(t *testing.T) {
+	var requestCount atomic.Int32
+	var loginCount atomic.Int32
+
+	_, client := newTestServerWithToken(t, "secret-token", func(w http.ResponseWriter, r *http.Request) {
+		if writeCSRFIfRequested(w, r) {
+			return
+		}
+		switch r.URL.Path {
+		case "/login":
+			loginCount.Add(1)
+			json.NewEncoder(w).Encode(Response{Success: true})
+		case "/panel/setting/all":
+			count := requestCount.Add(1)
+			if count == 1 {
+				// No session yet → panel redirects (Bearer doesn't unlock /panel/*).
+				w.Header().Set("Location", "/")
+				w.WriteHeader(http.StatusTemporaryRedirect)
+				return
+			}
+			json.NewEncoder(w).Encode(Response{Success: true, Msg: "settings"})
+		default:
+			t.Errorf("unexpected request path: %s", r.URL.Path)
+		}
+	})
+
+	resp, err := client.Post(context.Background(), "panel/setting/all")
+	if err != nil {
+		t.Fatalf("Post returned error: %v", err)
+	}
+	if !resp.Success {
+		t.Error("expected success after lazy session login")
+	}
+	if loginCount.Load() != 1 {
+		t.Errorf("login called %d times, want 1 (lazy session for /panel/* route)", loginCount.Load())
+	}
+	if requestCount.Load() != 2 {
+		t.Errorf("endpoint called %d times, want 2", requestCount.Load())
+	}
+}
+
+func TestTokenOnly_NoCredentialsPanelRouteErrors(t *testing.T) {
+	cfg := &config.Config{
+		Host:     "", // set below
+		BasePath: "/",
+		APIToken: "secret-token",
+		// No username/password: token-only deployment.
+	}
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if writeCSRFIfRequested(w, r) {
+			return
+		}
+		// /panel/* route with no session and a token that the panel ignores here.
+		w.Header().Set("Location", "/")
+		w.WriteHeader(http.StatusTemporaryRedirect)
+	}))
+	t.Cleanup(ts.Close)
+	cfg.Host = ts.URL
+	client := NewClient(cfg, slog.Default())
+
+	_, err := client.Post(context.Background(), "panel/setting/all")
+	if err == nil {
+		t.Fatal("expected an error for a session-gated route without credentials")
 	}
 }
