@@ -63,20 +63,20 @@ func (c *Client) GetXrayLogs(ctx context.Context, count int, filter string) (*Re
 
 // GetSettings returns all panel settings.
 func (c *Client) GetSettings(ctx context.Context) (*Response, error) {
-	return c.Post(ctx, "panel/setting/all")
+	return c.Post(ctx, "panel/api/setting/all")
 }
 
 // UpdateSettings updates panel settings.
 func (c *Client) UpdateSettings(ctx context.Context, data map[string]any) (*Response, error) {
-	return c.PostJSON(ctx, "panel/setting/update", data)
+	return c.PostJSON(ctx, "panel/api/setting/update", data)
 }
 
 // GetDefaultXrayConfig returns the default Xray configuration template.
 func (c *Client) GetDefaultXrayConfig(ctx context.Context) (*Response, error) {
-	return c.Get(ctx, "panel/setting/getDefaultJsonConfig")
+	return c.Get(ctx, "panel/api/setting/getDefaultJsonConfig")
 }
 
 // RestartPanel restarts the 3x-ui panel itself.
 func (c *Client) RestartPanel(ctx context.Context) (*Response, error) {
-	return c.Post(ctx, "panel/setting/restartPanel")
+	return c.Post(ctx, "panel/api/setting/restartPanel")
 }
