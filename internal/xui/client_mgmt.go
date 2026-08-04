@@ -136,6 +136,13 @@ func (c *Client) GetLastOnline(ctx context.Context) (*Response, error) {
 	return c.Post(ctx, clientsBase+"lastOnline")
 }
 
+// GetSubscriptionLinks returns the connection URLs for every enabled client
+// carrying the given subscription ID — the same set the public /sub/<subId>
+// endpoint serves, as a plain JSON array instead of base64.
+func (c *Client) GetSubscriptionLinks(ctx context.Context, subID string) (*Response, error) {
+	return c.Get(ctx, clientsBase+"subLinks/"+url.PathEscape(subID))
+}
+
 // UpdateClientTraffic sets specific upload/download byte values for a client.
 func (c *Client) UpdateClientTraffic(ctx context.Context, email string, upload, download int64) (*Response, error) {
 	return c.PostJSON(ctx, clientsBase+"updateTraffic/"+url.PathEscape(email), map[string]int64{

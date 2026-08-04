@@ -9,7 +9,7 @@ MCP (Model Context Protocol) server for [3x-ui](https://github.com/MHSanaei/3x-u
 
 ## Features
 
-- 46 MCP tools covering the full 3x-ui API (3x-ui v3.3.0+ — see [Panel versions](#panel-versions))
+- 65 MCP tools covering the full 3x-ui API (3x-ui v3.3.0+ — see [Panel versions](#panel-versions))
 - Two auth modes: session login with CSRF, or a Bearer API token (`XUI_API_TOKEN`)
 - Automatic session management with transparent re-authentication and CSRF refresh
 - Email-keyed client model: attach/detach across inbounds, bulk operations, paged listing
@@ -92,9 +92,17 @@ touching settings or the Xray template answers HTTP 404. For panels up to
 v3.2.8, use release [v0.2.0](https://github.com/pyworkload/3x-ui-mcp/releases/tag/v0.2.0)
 instead.
 
+A few tools wrap endpoints that landed after v3.3.0 and answer 404 below the
+version listed:
+
+| Tool | Needs |
+|---|---|
+| `get_balancers`, `set_balancer_override`, `test_route` | v3.3.1 |
+| `scan_reality_target`, `scan_reality_targets`, `get_all_inbound_links` | v3.4.2 |
+
 ## MCP Tools
 
-### Inbound Management (5 tools)
+### Inbound Management (10 tools)
 
 | Tool | Description |
 |---|---|
@@ -103,8 +111,13 @@ instead.
 | `create_inbound` | Create a new inbound |
 | `update_inbound` | Update an existing inbound |
 | `delete_inbound` | Delete an inbound |
+| `set_inbound_enable` | Enable/disable an inbound without rewriting its settings |
+| `reset_inbound_traffic` | Zero one inbound's traffic counters |
+| `delete_all_inbound_clients` | Remove every client from an inbound, keeping the inbound |
+| `bulk_delete_inbounds` | Delete several inbounds in one call |
+| `get_all_inbound_links` | Connection URLs for every client across every inbound |
 
-### Client Management (20 tools)
+### Client Management (21 tools)
 
 Clients are email-keyed entities that can be attached to several inbounds at once.
 
@@ -130,8 +143,9 @@ Clients are email-keyed entities that can be attached to several inbounds at onc
 | `get_online_clients` | List currently connected clients |
 | `get_last_online` | Last-online timestamp for every client |
 | `update_client_traffic` | Set specific upload/download byte counters for a client |
+| `get_subscription_links` | Connection URLs served under a subscription ID, as JSON |
 
-### Server Management (11 tools)
+### Server Management (14 tools)
 
 | Tool | Description |
 |---|---|
@@ -146,14 +160,17 @@ Clients are email-keyed entities that can be attached to several inbounds at onc
 | `get_settings` | Get panel settings |
 | `get_default_xray_config` | Get default Xray configuration |
 | `restart_panel` | Restart the 3x-ui panel |
+| `generate_key` | Generate key material: UUID, X25519 (Reality), VLESS encryption, ML-KEM-768, ML-DSA-65 |
+| `scan_reality_target` | Probe one REALITY candidate and report whether it is usable |
+| `scan_reality_targets` | Probe domains, IPs or CIDR ranges, ranked by feasibility and latency |
 
-### Xray Configuration (10 tools)
+### Xray Configuration (20 tools)
 
 | Tool | Description |
 |---|---|
 | `get_xray_template` | Get Xray JSON template |
 | `update_xray_template` | Update Xray JSON template |
-| `get_routing_rules` | List all routing rules |
+| `get_routing_rules` | List all routing rules (and the balancers they reference) |
 | `add_routing_rule` | Add a routing rule |
 | `remove_routing_rule` | Remove a routing rule by index |
 | `update_routing_rule` | Update a routing rule by index |
@@ -161,6 +178,16 @@ Clients are email-keyed entities that can be attached to several inbounds at onc
 | `get_outbounds_traffic` | Get outbound traffic statistics |
 | `reset_outbound_traffic` | Reset traffic for an outbound tag |
 | `test_outbound` | Test connectivity of an outbound |
+| `get_balancers` | Balancer definitions plus their live state in the running core |
+| `set_balancer_override` | Pin a balancer to one outbound, or release it back to its strategy |
+| `test_route` | Ask the core which outbound it would pick for a synthetic connection |
+| `list_outbound_subs` | List outbound subscriptions — remote URLs supplying extra outbounds |
+| `preview_outbound_sub` | Parse a subscription URL without saving it |
+| `create_outbound_sub` | Add an outbound subscription |
+| `update_outbound_sub` | Update a subscription (only supplied fields change) |
+| `refresh_outbound_sub` | Re-fetch a subscription now and return its outbounds |
+| `move_outbound_sub` | Move a subscription up/down in priority |
+| `delete_outbound_sub` | Delete an outbound subscription |
 
 ## Architecture
 
