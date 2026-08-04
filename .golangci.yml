@@ -1,0 +1,25 @@
+version: "2"
+
+linters:
+  # errcheck, govet, ineffassign, staticcheck, unused
+  default: standard
+  enable:
+    - bodyclose # an unclosed response body leaks a connection
+    - errorlint # %v on an error breaks errors.Is/As down the line
+    - misspell
+    - unconvert
+  exclusions:
+    presets:
+      # Skips the error returns nobody acts on: deferred Close, fmt.Fprint to
+      # an http.ResponseWriter, and friends.
+      - std-error-handling
+    rules:
+      # Test servers encode responses with json.NewEncoder(w).Encode and parse
+      # forms inline; checking each return would bury what the test asserts.
+      - path: _test\.go
+        linters:
+          - errcheck
+
+formatters:
+  enable:
+    - gofmt
