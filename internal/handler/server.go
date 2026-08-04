@@ -2,6 +2,9 @@ package handler
 
 import (
 	"context"
+	"fmt"
+	"sort"
+	"strings"
 
 	"github.com/pyworkload/3x-ui-mcp/internal/xui"
 
@@ -78,6 +81,41 @@ func registerServerTools(s *server.MCPServer, client *xui.Client) {
 	s.AddTool(mcp.NewTool("restart_panel",
 		mcp.WithDescription("Restart the 3x-ui panel itself. The panel will be unavailable for a few seconds during restart."),
 	), h.restartPanel)
+
+	// --- Key material & Reality targets ---
+
+	s.AddTool(mcp.NewTool("generate_key",
+		mcp.WithDescription("Generate key material with the panel's own generators — use this instead of inventing values when building an inbound. Types:\n"+
+			"- 'uuid': a UUID v4 for a client id\n"+
+			"- 'x25519': X25519 keypair for Reality (privateKey goes into the inbound, publicKey into client links)\n"+
+			"- 'vless_enc': VLESS encryption auth options; each entry pairs a decryption string for the inbound with the encryption string for clients\n"+
+			"- 'mlkem768': ML-KEM-768 keypair (post-quantum KEM)\n"+
+			"- 'mldsa65': ML-DSA-65 keypair (post-quantum signature)"),
+		mcp.WithString("type",
+			mcp.Required(),
+			mcp.Enum("uuid", "x25519", "vless_enc", "mlkem768", "mldsa65"),
+			mcp.Description("What to generate"),
+		),
+	), h.generateKey)
+
+	s.AddTool(mcp.NewTool("scan_reality_target",
+		mcp.WithDescription("Probe one candidate REALITY target over live TLS and report whether it is usable: TLS 1.3, HTTP/2, X25519 and a trusted certificate, plus the certificate's SAN DNS names (candidates for serverNames)."),
+		mcp.WithString("target",
+			mcp.Required(),
+			mcp.Description("Domain or host:port, e.g. 'www.cloudflare.com' or 'www.cloudflare.com:443'"),
+		),
+		mcp.WithNumber("xver",
+			mcp.Description("PROXY protocol version to probe with (0 = none)"),
+		),
+	), h.scanRealityTarget)
+
+	s.AddTool(mcp.NewTool("scan_reality_targets",
+		mcp.WithDescription("Probe several REALITY candidates at once and get them ranked by feasibility, then latency. Each comma-separated token may be a domain (checked with SNI), a bare IP, or a CIDR range to discover by reading the certificates it serves."),
+		mcp.WithString("targets",
+			mcp.Required(),
+			mcp.Description("Comma-separated domains, IPs or CIDR ranges, e.g. 'www.cloudflare.com,dl.google.com,104.16.0.0/24'"),
+		),
+	), h.scanRealityTargets)
 }
 
 func (h *serverHandler) status(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -130,4 +168,53 @@ func (h *serverHandler) getDefaultXrayConfig(ctx context.Context, req mcp.CallTo
 
 func (h *serverHandler) restartPanel(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return toResult(h.client.RestartPanel(ctx))
+}
+
+func (h *serverHandler) generateKey(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	kind, err := req.RequireString("type")
+	if err != nil {
+		return mcp.NewToolResultError("type is required"), nil
+	}
+
+	generate, ok := keyGenerators[kind]
+	if !ok {
+		return mcp.NewToolResultError(fmt.Sprintf("unknown type %q — expected one of: %s", kind, strings.Join(keyGeneratorNames(), ", "))), nil
+	}
+	return toResult(generate(h.client, ctx))
+}
+
+// keyGenerators maps the generate_key type parameter to the panel endpoint
+// that produces it.
+var keyGenerators = map[string]func(*xui.Client, context.Context) (*xui.Response, error){
+	"uuid":      (*xui.Client).GetNewUUID,
+	"x25519":    (*xui.Client).GetNewX25519Cert,
+	"vless_enc": (*xui.Client).GetNewVlessEnc,
+	"mlkem768":  (*xui.Client).GetNewMLKEM768,
+	"mldsa65":   (*xui.Client).GetNewMLDSA65,
+}
+
+// keyGeneratorNames lists the supported types in a stable order, for errors.
+func keyGeneratorNames() []string {
+	names := make([]string, 0, len(keyGenerators))
+	for name := range keyGenerators {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+func (h *serverHandler) scanRealityTarget(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	target, err := req.RequireString("target")
+	if err != nil {
+		return mcp.NewToolResultError("target is required"), nil
+	}
+	return toResult(h.client.ScanRealityTarget(ctx, target, int(req.GetFloat("xver", 0))))
+}
+
+func (h *serverHandler) scanRealityTargets(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	targets, err := req.RequireString("targets")
+	if err != nil {
+		return mcp.NewToolResultError("targets is required"), nil
+	}
+	return toResult(h.client.ScanRealityTargets(ctx, targets))
 }

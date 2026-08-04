@@ -59,6 +59,54 @@ func (c *Client) GetXrayLogs(ctx context.Context, count int, filter string) (*Re
 	return c.PostForm(ctx, fmt.Sprintf("panel/api/server/xraylogs/%d", count), data)
 }
 
+// --- Key generation & Reality probing ---
+
+// GetNewUUID returns a fresh UUID v4 from the panel, for use as a client ID.
+func (c *Client) GetNewUUID(ctx context.Context) (*Response, error) {
+	return c.Get(ctx, "panel/api/server/getNewUUID")
+}
+
+// GetNewX25519Cert returns a new X25519 keypair for a Reality inbound.
+func (c *Client) GetNewX25519Cert(ctx context.Context) (*Response, error) {
+	return c.Get(ctx, "panel/api/server/getNewX25519Cert")
+}
+
+// GetNewVlessEnc returns VLESS encryption auth options — each entry pairs the
+// decryption string for the inbound with the encryption string for clients.
+func (c *Client) GetNewVlessEnc(ctx context.Context) (*Response, error) {
+	return c.Get(ctx, "panel/api/server/getNewVlessEnc")
+}
+
+// GetNewMLKEM768 returns a new ML-KEM-768 keypair (post-quantum KEM).
+func (c *Client) GetNewMLKEM768(ctx context.Context) (*Response, error) {
+	return c.Get(ctx, "panel/api/server/getNewmlkem768")
+}
+
+// GetNewMLDSA65 returns a new ML-DSA-65 keypair (post-quantum signature).
+func (c *Client) GetNewMLDSA65(ctx context.Context) (*Response, error) {
+	return c.Get(ctx, "panel/api/server/getNewmldsa65")
+}
+
+// ScanRealityTarget probes one candidate Reality target over TLS and reports
+// whether it is usable (TLS 1.3 + h2 + X25519 + trusted cert), along with the
+// certificate's SAN DNS names. xver 0 leaves the PROXY-protocol version unset.
+func (c *Client) ScanRealityTarget(ctx context.Context, target string, xver int) (*Response, error) {
+	data := url.Values{"target": {target}}
+	if xver > 0 {
+		data.Set("xver", fmt.Sprintf("%d", xver))
+	}
+	return c.PostForm(ctx, "panel/api/server/scanRealityTarget", data)
+}
+
+// ScanRealityTargets probes several candidates at once and returns them ranked
+// by feasibility then latency. Each comma-separated token may be a domain, a
+// bare IP, or a CIDR range to discover.
+func (c *Client) ScanRealityTargets(ctx context.Context, targets string) (*Response, error) {
+	return c.PostForm(ctx, "panel/api/server/scanRealityTargets", url.Values{
+		"targets": {targets},
+	})
+}
+
 // --- Settings API methods ---
 
 // GetSettings returns all panel settings.

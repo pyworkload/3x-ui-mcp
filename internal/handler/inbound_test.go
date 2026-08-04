@@ -278,3 +278,32 @@ func TestNumberAsInt_HandlesManyTypes(t *testing.T) {
 		})
 	}
 }
+
+func TestParseInboundIDs_AcceptsJSONArray(t *testing.T) {
+	ids, err := parseInboundIDs("[3, 7, 12]")
+	if err != nil {
+		t.Fatalf("parseInboundIDs returned error: %v", err)
+	}
+	if len(ids) != 3 || ids[0] != 3 || ids[2] != 12 {
+		t.Errorf("ids = %v, want [3 7 12]", ids)
+	}
+}
+
+func TestParseInboundIDs_RejectsBadInput(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+	}{
+		{"empty array", "[]"},
+		{"not an array", `{"ids":[1]}`},
+		{"strings", `["3"]`},
+		{"garbage", "3,7"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := parseInboundIDs(tc.in); err == nil {
+				t.Errorf("expected an error for %q", tc.in)
+			}
+		})
+	}
+}

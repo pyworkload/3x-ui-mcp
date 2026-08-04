@@ -97,6 +97,46 @@ func registerInboundTools(s *server.MCPServer, client *xui.Client) {
 			mcp.Description("Inbound ID to delete"),
 		),
 	), h.delete)
+
+	s.AddTool(mcp.NewTool("set_inbound_enable",
+		mcp.WithDescription("Enable or disable an inbound. Touches only the enable flag — preferred over update_inbound for a simple on/off, since it never rewrites the settings JSON."),
+		mcp.WithNumber("id",
+			mcp.Required(),
+			mcp.Description("Inbound ID"),
+		),
+		mcp.WithBoolean("enable",
+			mcp.Required(),
+			mcp.Description("true to enable, false to disable"),
+		),
+	), h.setEnable)
+
+	s.AddTool(mcp.NewTool("reset_inbound_traffic",
+		mcp.WithDescription("Zero the upload/download counters of a single inbound. Per-client counters are left untouched — use reset_client_traffic or bulk_reset_traffic for those."),
+		mcp.WithNumber("id",
+			mcp.Required(),
+			mcp.Description("Inbound ID"),
+		),
+	), h.resetTraffic)
+
+	s.AddTool(mcp.NewTool("delete_all_inbound_clients",
+		mcp.WithDescription("Remove every client attached to one inbound, keeping the inbound itself. Clients attached to other inbounds as well are deleted panel-wide, since clients are email-keyed entities. Cannot be undone."),
+		mcp.WithNumber("id",
+			mcp.Required(),
+			mcp.Description("Inbound ID"),
+		),
+	), h.deleteAllClients)
+
+	s.AddTool(mcp.NewTool("bulk_delete_inbounds",
+		mcp.WithDescription("Delete several inbounds in one call. The panel processes them sequentially, reports failures per id while the rest still proceed, and restarts Xray at most once. Cannot be undone."),
+		mcp.WithString("ids",
+			mcp.Required(),
+			mcp.Description("Inbound IDs as a JSON array, e.g. [3,7,12]"),
+		),
+	), h.bulkDelete)
+
+	s.AddTool(mcp.NewTool("get_all_inbound_links",
+		mcp.WithDescription("Get the connection URLs (vless://, vmess://, trojan://, ss://, ...) for every client across every inbound, rendered through the panel's subscription engine with the configured remark template."),
+	), h.allLinks)
 }
 
 func (h *inboundHandler) list(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -298,4 +338,62 @@ func (h *inboundHandler) delete(ctx context.Context, req mcp.CallToolRequest) (*
 		return mcp.NewToolResultError("id is required"), nil
 	}
 	return toResult(h.client.DeleteInbound(ctx, int(id)))
+}
+
+func (h *inboundHandler) setEnable(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	id, err := req.RequireFloat("id")
+	if err != nil {
+		return mcp.NewToolResultError("id is required"), nil
+	}
+	enable, err := req.RequireBool("enable")
+	if err != nil {
+		return mcp.NewToolResultError("enable is required"), nil
+	}
+	return toResult(h.client.SetInboundEnable(ctx, int(id), enable))
+}
+
+func (h *inboundHandler) resetTraffic(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	id, err := req.RequireFloat("id")
+	if err != nil {
+		return mcp.NewToolResultError("id is required"), nil
+	}
+	return toResult(h.client.ResetInboundTraffic(ctx, int(id)))
+}
+
+func (h *inboundHandler) deleteAllClients(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	id, err := req.RequireFloat("id")
+	if err != nil {
+		return mcp.NewToolResultError("id is required"), nil
+	}
+	return toResult(h.client.DeleteAllInboundClients(ctx, int(id)))
+}
+
+func (h *inboundHandler) bulkDelete(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	idsStr, err := req.RequireString("ids")
+	if err != nil {
+		return mcp.NewToolResultError("ids is required"), nil
+	}
+	ids, err := parseInboundIDs(idsStr)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	return toResult(h.client.BulkDeleteInbounds(ctx, ids))
+}
+
+// parseInboundIDs reads the JSON array of inbound IDs accepted by
+// bulk_delete_inbounds. An empty list is rejected rather than sent, since the
+// panel would happily answer "0 deleted" and hide the mistake.
+func parseInboundIDs(raw string) ([]int, error) {
+	var ids []int
+	if err := json.Unmarshal([]byte(raw), &ids); err != nil {
+		return nil, fmt.Errorf("ids must be a JSON array of numbers, e.g. [3,7,12]: %w", err)
+	}
+	if len(ids) == 0 {
+		return nil, fmt.Errorf("ids is empty — nothing to delete")
+	}
+	return ids, nil
+}
+
+func (h *inboundHandler) allLinks(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return toResult(h.client.GetAllInboundLinks(ctx))
 }

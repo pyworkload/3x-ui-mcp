@@ -330,6 +330,23 @@ func registerClientTools(s *server.MCPServer, client *xui.Client) {
 			mcp.Description("Download bytes"),
 		),
 	), h.updateTraffic)
+
+	s.AddTool(mcp.NewTool("get_subscription_links",
+		mcp.WithDescription("Get the connection URLs served under a subscription ID — every enabled client whose subId matches, one URL per inbound (and per external proxy where configured). "+
+			"Same set as the public /sub/<subId> endpoint, but as a JSON array instead of base64. A client's subId comes from get_client or list_clients."),
+		mcp.WithString("sub_id",
+			mcp.Required(),
+			mcp.Description("Subscription ID (the client's subId field)"),
+		),
+	), h.getSubscriptionLinks)
+}
+
+func (h *clientHandler) getSubscriptionLinks(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	subID, err := req.RequireString("sub_id")
+	if err != nil {
+		return mcp.NewToolResultError("sub_id is required"), nil
+	}
+	return toResult(h.client.GetSubscriptionLinks(ctx, subID))
 }
 
 // buildClientConfig assembles a ClientConfig from the request params (no auto-generation).
