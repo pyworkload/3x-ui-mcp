@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -682,5 +683,69 @@ func TestTokenOnly_NoCredentialsPanelRouteErrors(t *testing.T) {
 	_, err := client.Post(context.Background(), "panel/setting/all")
 	if err == nil {
 		t.Fatal("expected an error for a session-gated route without credentials")
+	}
+}
+
+// GET on a route the panel doesn't have lands on the SPA shell: 200 with
+// index.html. That must not reach the caller as a successful API response.
+func TestSPAShell_NotReportedAsSuccess(t *testing.T) {
+	_, client := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if writeCSRFIfRequested(w, r) {
+			return
+		}
+		if r.URL.Path == "/login" {
+			json.NewEncoder(w).Encode(Response{Success: true})
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, "<!doctype html>\n<html lang=\"en\"><head><title>3x-ui</title></head></html>")
+	})
+
+	_, err := client.Get(context.Background(), "panel/api/inbounds/list")
+	if err == nil {
+		t.Fatal("expected an error when the panel returns the SPA shell, got nil")
+	}
+}
+
+// A 404 on a route that moved in v3.3.0 should say so, not just report an auth
+// failure — the usual cause is a panel older than v3.3.0.
+func TestRelocatedRoute_404MentionsPanelVersion(t *testing.T) {
+	_, client := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if writeCSRFIfRequested(w, r) {
+			return
+		}
+		if r.URL.Path == "/login" {
+			json.NewEncoder(w).Encode(Response{Success: true})
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	})
+
+	_, err := client.Post(context.Background(), "panel/api/xray/")
+	if err == nil {
+		t.Fatal("expected an error for a route the panel does not serve, got nil")
+	}
+	if !strings.Contains(err.Error(), "v3.3.0") {
+		t.Errorf("error %q should mention the v3.3.0 route move", err)
+	}
+}
+
+func TestIsRelocatedRoute(t *testing.T) {
+	cases := []struct {
+		path string
+		want bool
+	}{
+		{"panel/api/xray/", true},
+		{"panel/api/xray/getOutboundsTraffic", true},
+		{"panel/api/setting/all", true},
+		{"/panel/api/setting/update", true},
+		{"panel/api/inbounds/list", false},
+		{"panel/csrf-token", false},
+	}
+	for _, tc := range cases {
+		if got := isRelocatedRoute(tc.path); got != tc.want {
+			t.Errorf("isRelocatedRoute(%q) = %v, want %v", tc.path, got, tc.want)
+		}
 	}
 }

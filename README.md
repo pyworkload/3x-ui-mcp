@@ -9,7 +9,7 @@ MCP (Model Context Protocol) server for [3x-ui](https://github.com/MHSanaei/3x-u
 
 ## Features
 
-- 46 MCP tools covering the full 3x-ui API (3x-ui v3.2.8+)
+- 46 MCP tools covering the full 3x-ui API (3x-ui v3.3.0+ — see [Panel versions](#panel-versions))
 - Two auth modes: session login with CSRF, or a Bearer API token (`XUI_API_TOKEN`)
 - Automatic session management with transparent re-authentication and CSRF refresh
 - Email-keyed client model: attach/detach across inbounds, bulk operations, paged listing
@@ -64,23 +64,33 @@ Download from [Releases](https://github.com/pyworkload/3x-ui-mcp/releases), then
 | `XUI_HOST` | Yes | Panel URL | `http://localhost:2053` |
 | `XUI_USERNAME` | Yes¹ | Admin username | `admin` |
 | `XUI_PASSWORD` | Yes¹ | Admin password | `admin` |
-| `XUI_API_TOKEN` | No | Bearer API token (3x-ui v3.2.8+). Bypasses CSRF for `/panel/api/*` | `eyJ…` |
+| `XUI_API_TOKEN` | No | Bearer API token. Bypasses CSRF for `/panel/api/*` | `eyJ…` |
 | `XUI_BASE_PATH` | No | Panel base path (default: `/`) | `/xui/` |
 | `XUI_LOG_LEVEL` | No | Log level (default: `info`) | `debug`, `info`, `warn`, `error` |
 
 ¹ Provide **either** `XUI_USERNAME`+`XUI_PASSWORD` **or** `XUI_API_TOKEN`.
 
-**Auth modes (3x-ui v3.2.8 added CSRF protection + API tokens):**
+**Auth modes (3x-ui protects the panel with CSRF and supports API tokens):**
 
 - **Session + CSRF** (username/password): works for every tool. The client logs in,
   tracks the session CSRF token, and replays it on write requests, refreshing
   automatically when it goes stale.
 - **Bearer API token** (`XUI_API_TOKEN`): the token is sent on every request and
-  the panel accepts it for `/panel/api/*` routes (inbounds, clients, server)
-  without CSRF. Settings and Xray-template tools live under `/panel/*`, which the
-  panel still gates by session — so to use those alongside a token, also set
-  `XUI_USERNAME`/`XUI_PASSWORD` (the client establishes a session on demand).
+  the panel accepts it for `/panel/api/*` routes without CSRF — on v3.3.0+ that
+  covers every tool here, settings and Xray templates included.
   Create a token in the panel under **Settings → API Tokens**.
+
+## Panel versions
+
+Requires **3x-ui v3.3.0 or newer**. That release moved the settings and Xray
+endpoints from `/panel/setting/*` and `/panel/xray/*` under `/panel/api/`
+(upstream [`c6f15cd5`](https://github.com/MHSanaei/3x-ui/commit/c6f15cd5), a
+documented breaking change), and this server targets the current layout.
+
+On an older panel the inbound, client and server tools still work, but anything
+touching settings or the Xray template answers HTTP 404. For panels up to
+v3.2.8, use release [v0.2.0](https://github.com/pyworkload/3x-ui-mcp/releases/tag/v0.2.0)
+instead.
 
 ## MCP Tools
 
