@@ -28,9 +28,8 @@ const csrfHeaderName = "X-CSRF-Token"
 //     in a jar, and replays the session CSRF token on unsafe requests. Covers
 //     every panel route.
 //   - Bearer API token (optional): when set, sent on every request. The panel
-//     accepts it for /panel/api/* routes and skips CSRF there. Routes under
-//     /panel/* (settings, xray) are gated by session login, so they still need
-//     credentials; the token alone does not unlock them.
+//     accepts it for /panel/api/* routes and skips CSRF there — on v3.3.0+ that
+//     covers every route this client calls, settings and xray included.
 type Client struct {
 	baseURL  string
 	username string
@@ -264,8 +263,27 @@ func (c *Client) do(ctx context.Context, method, path, contentType string, body 
 	return resp, nil
 }
 
+// relocatedRoutePrefixes are the route groups 3x-ui moved under /panel/api in
+// v3.3.0 (upstream c6f15cd5). This server targets the new layout, so a 404 that
+// survives re-auth here points at a panel too old to serve them.
+var relocatedRoutePrefixes = []string{"panel/api/setting/", "panel/api/xray/"}
+
+// isRelocatedRoute reports whether path belongs to a group that moved in v3.3.0.
+func isRelocatedRoute(path string) bool {
+	p := strings.TrimLeft(path, "/")
+	for _, prefix := range relocatedRoutePrefixes {
+		if strings.HasPrefix(p, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
 // authFailureError builds a descriptive error for an unrecoverable auth failure.
 func (c *Client) authFailureError(path string, status int) error {
+	if status == http.StatusNotFound && isRelocatedRoute(path) {
+		return fmt.Errorf("request to %s failed (HTTP 404): 3x-ui v3.3.0 moved this endpoint under /panel/api/ — if the panel is older than that, use a v0.2.x release of this server; otherwise verify credentials/XUI_API_TOKEN", path)
+	}
 	if c.apiToken != "" && !c.hasCredentials() {
 		return fmt.Errorf("request to %s failed (HTTP %d): this route needs a panel session, but only XUI_API_TOKEN is set — add XUI_USERNAME/XUI_PASSWORD for settings/xray tools, or verify the token", path, status)
 	}
@@ -322,6 +340,14 @@ func (c *Client) rawDo(ctx context.Context, method, path, contentType string, bo
 		return nil, status, nil
 	}
 
+	// A GET the panel doesn't route falls through to the SPA shell, which answers
+	// 200 with index.html. Report that as a missing route — otherwise HTML reaches
+	// the caller dressed up as a successful API response.
+	if isHTMLResponse(resp.Header.Get("Content-Type")) {
+		c.logger.Debug("got the SPA shell instead of an API response", "path", path)
+		return nil, http.StatusNotFound, nil
+	}
+
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, status, fmt.Errorf("reading response body: %w", err)
@@ -339,6 +365,11 @@ func (c *Client) rawDo(ctx context.Context, method, path, contentType string, bo
 
 	c.logger.Debug("API response", "path", path, "success", apiResp.Success)
 	return &apiResp, status, nil
+}
+
+// isHTMLResponse reports whether a Content-Type marks an HTML document.
+func isHTMLResponse(contentType string) bool {
+	return strings.Contains(strings.ToLower(contentType), "text/html")
 }
 
 // isSafeMethod reports whether the HTTP method is exempt from CSRF (read-only).
