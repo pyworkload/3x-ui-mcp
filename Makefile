@@ -35,10 +35,10 @@ cover:
 	go tool cover -html=coverage.out -o coverage.html
 	@echo "Coverage report: coverage.html"
 
-## lint: Run Go vet and staticcheck
-lint: vet
-	@which staticcheck > /dev/null 2>&1 || echo "install: go install honnef.co/go/tools/cmd/staticcheck@latest"
-	staticcheck ./...
+## lint: Run golangci-lint (govet, staticcheck, errcheck and more — see .golangci.yml)
+lint:
+	@which golangci-lint > /dev/null 2>&1 || echo "install: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest"
+	golangci-lint run ./...
 
 ## vet: Run go vet
 vet:
