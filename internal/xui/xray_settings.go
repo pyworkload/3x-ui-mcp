@@ -10,7 +10,7 @@ import (
 // GetXrayTemplate returns the current Xray template config, inbound tags, and test URL.
 // Response obj contains: xraySetting (JSON string), inboundTags ([]string), outboundTestUrl (string).
 func (c *Client) GetXrayTemplate(ctx context.Context) (*Response, error) {
-	return c.Post(ctx, "panel/xray/")
+	return c.Post(ctx, "panel/api/xray/")
 }
 
 // UpdateXrayTemplate saves a new Xray template configuration.
@@ -22,29 +22,29 @@ func (c *Client) UpdateXrayTemplate(ctx context.Context, xraySetting string, out
 	if outboundTestUrl != "" {
 		data.Set("outboundTestUrl", outboundTestUrl)
 	}
-	return c.PostForm(ctx, "panel/xray/update", data)
+	return c.PostForm(ctx, "panel/api/xray/update", data)
 }
 
 // GetOutboundsTraffic returns traffic statistics for all outbounds.
 func (c *Client) GetOutboundsTraffic(ctx context.Context) (*Response, error) {
-	return c.Get(ctx, "panel/xray/getOutboundsTraffic")
+	return c.Get(ctx, "panel/api/xray/getOutboundsTraffic")
 }
 
 // ResetOutboundTraffic resets traffic counters for a specific outbound tag.
 func (c *Client) ResetOutboundTraffic(ctx context.Context, tag string) (*Response, error) {
-	return c.PostForm(ctx, "panel/xray/resetOutboundsTraffic", url.Values{
+	return c.PostForm(ctx, "panel/api/xray/resetOutboundsTraffic", url.Values{
 		"tag": {tag},
 	})
 }
 
 // TestOutbound tests an outbound configuration for connectivity.
 func (c *Client) TestOutbound(ctx context.Context, outbound string) (*Response, error) {
-	return c.PostForm(ctx, "panel/xray/testOutbound", url.Values{
+	return c.PostForm(ctx, "panel/api/xray/testOutbound", url.Values{
 		"outbound": {outbound},
 	})
 }
 
 // GetXrayResult returns the current Xray service operational status.
 func (c *Client) GetXrayResult(ctx context.Context) (*Response, error) {
-	return c.Get(ctx, "panel/xray/getXrayResult")
+	return c.Get(ctx, "panel/api/xray/getXrayResult")
 }
