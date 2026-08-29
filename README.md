@@ -8,7 +8,7 @@ MCP (Model Context Protocol) server for [3x-ui](https://github.com/MHSanaei/3x-u
 
 ## Features
 
-- 140 MCP tools for inbounds, clients, groups, hosts, nodes, routing, balancers, geodata, metrics, API tokens and the Xray service (3x-ui v3.3.0+ — see [Panel versions](#panel-versions))
+- 166 MCP tools covering essentially the whole 3x-ui API: inbounds, clients, groups, hosts, nodes, routing, balancers, geodata, metrics, tokens, panel maintenance (3x-ui v3.3.0+ — see [Panel versions](#panel-versions))
 - Two auth modes: session login with CSRF, or a Bearer API token (`XUI_API_TOKEN`)
 - Automatic session management with transparent re-authentication and CSRF refresh
 - Email-keyed client model: attach/detach across inbounds, bulk operations, paged listing
@@ -92,12 +92,12 @@ Download from [Releases](https://github.com/pyworkload/3x-ui-mcp/releases), then
   *rotates* a single shared `cli-fallback` token instead of minting a new one, so
   running it again invalidates a token you handed out earlier.
 
-**Narrowing the toolset:** all 140 tool schemas together occupy roughly 24k tokens
-of model context in every session. `XUI_TOOLSETS` loads only the groups you need
-— `inbounds`, `clients`, `server`, `xray`, `metrics`, `groups`, `geodata`,
-`hosts`, `nodes`, `tokens`, `providers`, or `all`. `XUI_TOOLSETS=clients,metrics`
-leaves 35 tools at about 5.5k tokens. An unknown name fails at startup rather
-than silently loading nothing.
+**Narrowing the toolset:** all 166 tool schemas together occupy roughly 28k tokens
+of model context in every session — worth narrowing. `XUI_TOOLSETS` loads only
+the groups you need: `inbounds`, `clients`, `server`, `xray`, `metrics`,
+`groups`, `geodata`, `hosts`, `nodes`, `tokens`, `providers`, `maintenance`, or
+`all`. `XUI_TOOLSETS=clients,metrics` leaves 44 tools at about 7k tokens. An
+unknown name fails at startup rather than silently loading nothing.
 
 ## Panel versions
 
@@ -121,8 +121,10 @@ version listed:
 | Observability, client groups, bulk client state, inbound projections and fallbacks | v3.5.0 |
 | Host groups, API tokens, client export/import, external links, Warp and NordVPN | v3.5.0 |
 | Multi-node tools | v3.5.0 |
+| Maintenance, certificate helpers, cluster client views, `test_outbounds` | v3.5.0 |
 | Geodata, HWID devices, `get_clients_by_telegram_id`, `set_inbound_sub_sort_index` | v3.7.0 |
 | Subscription balancers, PIA, `reload_node_mtls_client`, and token `scope`/`expires_at` | v3.7.0 |
+| `validate_regex`, `get_factory_defaults`, `get_panel_update_status`, `get_amneziawg_logs` | v3.7.0 |
 
 The last two rows are bounded by the panel's own generated `openapi.json`, which
 only starts at v3.5.0 — some of those routes may predate it.
@@ -159,7 +161,7 @@ before the rest.
 | `set_inbound_fallbacks` | Replace the whole fallback list (restarts Xray) |
 | `set_inbound_sub_sort_index` | Set an inbound's position in subscription output |
 
-### Client Management (32 tools)
+### Client Management (38 tools)
 
 Clients are email-keyed entities that can be attached to several inbounds at once.
 
@@ -197,6 +199,12 @@ Clients are email-keyed entities that can be attached to several inbounds at onc
 | `export_clients` | Counts the clients and links to the full export (`full=true` inlines it) |
 | `import_clients` | Create clients from an exported array; existing emails are skipped |
 | `set_client_external_links` | Replace a client's external links and subscriptions |
+| `list_clients_paged` | Server-side filtering, sorting and paging over clients |
+| `bulk_attach_clients` | Attach many clients to many inbounds at once |
+| `bulk_detach_clients` | Detach many clients from many inbounds at once |
+| `get_active_inbounds` | Inbound tags that carried traffic, grouped by node |
+| `get_online_clients_by_node` | Online clients grouped by the node serving them |
+| `get_client_ips_by_node` | Per-client source IPs grouped by the node that saw them |
 
 ### Server Management (14 tools)
 
@@ -217,7 +225,7 @@ Clients are email-keyed entities that can be attached to several inbounds at onc
 | `scan_reality_target` | Probe one REALITY candidate and report whether it is usable |
 | `scan_reality_targets` | Probe domains, IPs or CIDR ranges, ranked by feasibility and latency |
 
-### Xray Configuration (20 tools)
+### Xray Configuration (21 tools)
 
 | Tool | Description |
 |---|---|
@@ -307,6 +315,34 @@ querying a country list is annotated differently from erasing credentials.
 | `get_pia_data` | Regions, servers in a region, or the stored account |
 | `manage_pia` | Log in, register a key against a server, or erase |
 
+### Panel Maintenance (19 tools)
+
+| Tool | Description |
+|---|---|
+| `get_fail2ban_status` | Whether per-client IP limits can be enforced on this host |
+| `get_web_cert_files` | This panel's own TLS certificate and key paths |
+| `get_cert_hash` | SHA-256 of a certificate, for pinning |
+| `get_remote_cert_hash` | SHA-256 of a remote server's live certificate |
+| `generate_ech_cert` | An ECH keypair and config list for one SNI |
+| `update_geofile` | Download fresh GeoIP/GeoSite data files |
+| `get_panel_update_status` | How the last panel self-update ended |
+| `set_update_channel` | Switch between the stable and dev channels |
+| `update_panel` | Self-update the panel (it restarts) |
+| `get_amneziawg_logs` | Live AmneziaWG peer activity and events |
+| `get_node_descendants` | The nodes below this panel in the cluster tree |
+| `get_client_ips_table` | The aggregated client-IP table behind IP limits |
+| `backup_to_telegram` | Send a database backup to the admin Telegram chats |
+| `test_smtp` | Test SMTP with stage-by-stage reporting |
+| `test_telegram_bot` | Send a test message through the configured bot |
+| `validate_regex` | Compile a pattern with the panel's Go RE2 engine |
+| `get_default_settings` | Preview what a fresh install would compute |
+| `get_factory_defaults` | The shipped default per setting key |
+| `update_admin_credentials` | Change the panel admin username and password |
+
+`update_admin_credentials` invalidates the credentials this server itself uses:
+update `XUI_USERNAME` / `XUI_PASSWORD` and restart it afterwards, or switch to
+an API token first.
+
 ### Multi-Node (16 tools)
 
 A node is another 3x-ui panel this one drives: inbounds and clients are pushed
@@ -375,6 +411,12 @@ the bucket picks the window too: 2 (2m), 30 (30m), 60 (1h), 180 (3h), 360 (6h),
 | `list_geodata_categories` | Categories in one database, with entry counts and attributes |
 | `list_geodata_entries` | The rules inside a category — typed domains or CIDRs |
 | `validate_geodata_tokens` | Report routing tokens that do not resolve, with a reason |
+
+**Deliberately not wrapped:** `server/getDb`, `server/getMigration` and
+`server/importDB` move database files as attachments and multipart uploads
+rather than JSON, so they belong in a browser or a backup script, not here.
+`inbounds/pushClientTraffics` and `POST server/clientIps` are the inbound half
+of node sync — endpoints a node receives on, not ones a client calls.
 
 ## Resources
 
