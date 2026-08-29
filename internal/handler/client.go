@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/url"
 	"strconv"
 
@@ -21,7 +22,8 @@ func registerClientTools(s *server.MCPServer, client *xui.Client) {
 	h := &clientHandler{client: client}
 
 	s.AddTool(mcp.NewTool("add_client",
-		mcp.WithDescription("Add a new client (user) and attach it to one or more inbounds. In 3x-ui v3.2.8 a client is a first-class, email-keyed entity. A UUID is auto-generated for VMess/VLESS if not provided; for Trojan/Shadowsocks/Hysteria the panel generates the key server-side when omitted."),
+		writesPanel,
+		mcp.WithDescription("Add a new client (user) and attach it to one or more inbounds. Clients are first-class, email-keyed entities. A UUID is auto-generated for VMess/VLESS if not provided; for Trojan/Shadowsocks/Hysteria the panel generates the key server-side when omitted. Field meanings and units: read the xui://docs/client-fields resource."),
 		mcp.WithArray("inbound_ids",
 			mcp.Required(),
 			mcp.Description("IDs of the inbounds to attach this client to (at least one)"),
@@ -75,6 +77,7 @@ func registerClientTools(s *server.MCPServer, client *xui.Client) {
 	), h.add)
 
 	s.AddTool(mcp.NewTool("update_client",
+		updatesPanel,
 		mcp.WithDescription("Update an existing client by email. Only the fields you pass are changed; everything else (including the UUID/password) is preserved by reading the current client first. Optionally restrict the update to specific inbounds via inbound_ids."),
 		mcp.WithString("email",
 			mcp.Required(),
@@ -129,6 +132,7 @@ func registerClientTools(s *server.MCPServer, client *xui.Client) {
 	), h.update)
 
 	s.AddTool(mcp.NewTool("delete_client",
+		destroysPanel,
 		mcp.WithDescription("Remove a client (from all its inbounds) by email."),
 		mcp.WithString("email",
 			mcp.Required(),
@@ -141,6 +145,7 @@ func registerClientTools(s *server.MCPServer, client *xui.Client) {
 	), h.delete)
 
 	s.AddTool(mcp.NewTool("get_client",
+		readsPanel,
 		mcp.WithDescription("Get a single client's full configuration (UUID, limits, settings) and the inbounds it is attached to, by email."),
 		mcp.WithString("email",
 			mcp.Required(),
@@ -149,6 +154,7 @@ func registerClientTools(s *server.MCPServer, client *xui.Client) {
 	), h.get)
 
 	s.AddTool(mcp.NewTool("list_clients",
+		readsPanel,
 		mcp.WithDescription("List clients with pagination, search and filtering. Returns a compact page plus totals and a summary."),
 		mcp.WithString("search",
 			mcp.Description("Substring match on email/subId/comment"),
@@ -180,6 +186,7 @@ func registerClientTools(s *server.MCPServer, client *xui.Client) {
 	), h.list)
 
 	s.AddTool(mcp.NewTool("attach_client",
+		updatesPanel,
 		mcp.WithDescription("Attach an existing client to additional inbounds, by email."),
 		mcp.WithString("email",
 			mcp.Required(),
@@ -193,6 +200,7 @@ func registerClientTools(s *server.MCPServer, client *xui.Client) {
 	), h.attach)
 
 	s.AddTool(mcp.NewTool("detach_client",
+		destroysPanel,
 		mcp.WithDescription("Detach a client from the given inbounds, by email. The client itself is kept (use delete_client to remove it entirely)."),
 		mcp.WithString("email",
 			mcp.Required(),
@@ -206,6 +214,7 @@ func registerClientTools(s *server.MCPServer, client *xui.Client) {
 	), h.detach)
 
 	s.AddTool(mcp.NewTool("bulk_create_clients",
+		writesPanel,
 		mcp.WithDescription("Create many clients at once across the same set of inbounds, sharing common limits. Each client gets an auto-generated UUID."),
 		mcp.WithArray("emails",
 			mcp.Required(),
@@ -242,6 +251,7 @@ func registerClientTools(s *server.MCPServer, client *xui.Client) {
 	), h.bulkCreate)
 
 	s.AddTool(mcp.NewTool("bulk_delete_clients",
+		destroysPanel,
 		mcp.WithDescription("Delete many clients at once by email."),
 		mcp.WithArray("emails",
 			mcp.Required(),
@@ -255,6 +265,7 @@ func registerClientTools(s *server.MCPServer, client *xui.Client) {
 	), h.bulkDelete)
 
 	s.AddTool(mcp.NewTool("get_client_traffic",
+		readsPanel,
 		mcp.WithDescription("Get upload/download traffic statistics for a client by email. Returns current usage, limits, and enable status."),
 		mcp.WithString("email",
 			mcp.Required(),
@@ -263,6 +274,7 @@ func registerClientTools(s *server.MCPServer, client *xui.Client) {
 	), h.getTraffic)
 
 	s.AddTool(mcp.NewTool("get_client_ips",
+		readsPanel,
 		mcp.WithDescription("Get IP addresses recorded for a client, with timestamps."),
 		mcp.WithString("email",
 			mcp.Required(),
@@ -271,6 +283,7 @@ func registerClientTools(s *server.MCPServer, client *xui.Client) {
 	), h.getIPs)
 
 	s.AddTool(mcp.NewTool("clear_client_ips",
+		destroysPanel,
 		mcp.WithDescription("Clear all recorded IP addresses for a client."),
 		mcp.WithString("email",
 			mcp.Required(),
@@ -279,6 +292,7 @@ func registerClientTools(s *server.MCPServer, client *xui.Client) {
 	), h.clearIPs)
 
 	s.AddTool(mcp.NewTool("reset_client_traffic",
+		destroysPanel,
 		mcp.WithDescription("Reset traffic counters (upload/download) for a specific client to zero, by email."),
 		mcp.WithString("email",
 			mcp.Required(),
@@ -287,14 +301,17 @@ func registerClientTools(s *server.MCPServer, client *xui.Client) {
 	), h.resetTraffic)
 
 	s.AddTool(mcp.NewTool("reset_all_traffics",
+		destroysPanel,
 		mcp.WithDescription("Reset all traffic counters across all inbounds. Use with caution."),
 	), h.resetAllTraffics)
 
 	s.AddTool(mcp.NewTool("reset_all_client_traffics",
+		destroysPanel,
 		mcp.WithDescription("Reset traffic counters for every client panel-wide. Use with caution."),
 	), h.resetAllClientTraffics)
 
 	s.AddTool(mcp.NewTool("bulk_reset_traffic",
+		destroysPanel,
 		mcp.WithDescription("Reset traffic counters for a specific set of clients, by email."),
 		mcp.WithArray("emails",
 			mcp.Required(),
@@ -304,18 +321,22 @@ func registerClientTools(s *server.MCPServer, client *xui.Client) {
 	), h.bulkResetTraffic)
 
 	s.AddTool(mcp.NewTool("delete_depleted_clients",
+		destroysPanel,
 		mcp.WithDescription("Remove all clients panel-wide that have exhausted their traffic or expired."),
 	), h.deleteDepleted)
 
 	s.AddTool(mcp.NewTool("get_online_clients",
+		readsPanel,
 		mcp.WithDescription("Get a list of currently connected/active clients."),
 	), h.getOnline)
 
 	s.AddTool(mcp.NewTool("get_last_online",
+		readsPanel,
 		mcp.WithDescription("Get the last-online timestamp for every client."),
 	), h.getLastOnline)
 
 	s.AddTool(mcp.NewTool("update_client_traffic",
+		destroysPanel,
 		mcp.WithDescription("Set specific upload/download byte values for a client's traffic counter."),
 		mcp.WithString("email",
 			mcp.Required(),
@@ -332,6 +353,7 @@ func registerClientTools(s *server.MCPServer, client *xui.Client) {
 	), h.updateTraffic)
 
 	s.AddTool(mcp.NewTool("get_subscription_links",
+		readsPanel,
 		mcp.WithDescription("Get the connection URLs served under a subscription ID — every enabled client whose subId matches, one URL per inbound (and per external proxy where configured). "+
 			"Same set as the public /sub/<subId> endpoint, but as a JSON array instead of base64. A client's subId comes from get_client or list_clients."),
 		mcp.WithString("sub_id",
@@ -339,6 +361,200 @@ func registerClientTools(s *server.MCPServer, client *xui.Client) {
 			mcp.Description("Subscription ID (the client's subId field)"),
 		),
 	), h.getSubscriptionLinks)
+
+	s.AddTool(mcp.NewTool("get_clients_by_telegram_id",
+		readsPanel,
+		mcp.WithDescription("Look up clients by Telegram user ID. Answers with an array, since several clients can share one Telegram account."),
+		mcp.WithNumber("tg_id",
+			mcp.Required(),
+			mcp.Description("Telegram user ID (numeric)"),
+		),
+	), h.getByTelegramID)
+
+	s.AddTool(mcp.NewTool("list_client_devices",
+		readsPanel,
+		mcp.WithDescription("List the HWID devices registered for a client: first and last seen, user agent, OS and model. The hashes themselves are never exposed."),
+		mcp.WithString("email",
+			mcp.Required(),
+			mcp.Description("Client email"),
+		),
+	), h.listDevices)
+
+	s.AddTool(mcp.NewTool("delete_client_device",
+		destroysPanel,
+		mcp.WithDescription("Remove one registered device from a client, freeing a single slot under its HWID limit."),
+		mcp.WithString("email",
+			mcp.Required(),
+			mcp.Description("Client email"),
+		),
+		mcp.WithNumber("device_id",
+			mcp.Required(),
+			mcp.Description("Device id from list_client_devices"),
+		),
+	), h.deleteDevice)
+
+	s.AddTool(mcp.NewTool("clear_client_devices",
+		destroysPanel,
+		mcp.WithDescription("Drop every registered device for a client so new ones can register — the fix for a user who changed phones and hit the HWID limit."),
+		mcp.WithString("email",
+			mcp.Required(),
+			mcp.Description("Client email"),
+		),
+	), h.clearDevices)
+
+	s.AddTool(mcp.NewTool("bulk_enable_clients",
+		updatesPanel,
+		mcp.WithDescription("Enable many clients at once. Emails are grouped by inbound, so each inbound is rewritten once. Clients that do not exist come back in a 'skipped' list rather than failing the call."),
+		mcp.WithArray("emails",
+			mcp.Required(),
+			mcp.Description("Emails of the clients to enable"),
+			mcp.WithStringItems(),
+		),
+	), h.bulkEnable)
+
+	s.AddTool(mcp.NewTool("bulk_disable_clients",
+		updatesPanel,
+		mcp.WithDescription("Disable many clients at once, one rewrite per owning inbound. Their configuration is kept, so bulk_enable_clients reverses it."),
+		mcp.WithArray("emails",
+			mcp.Required(),
+			mcp.Description("Emails of the clients to disable"),
+			mcp.WithStringItems(),
+		),
+	), h.bulkDisable)
+
+	s.AddTool(mcp.NewTool("bulk_adjust_clients",
+		writesPanel,
+		mcp.WithDescription("Shift expiry and traffic quota for many clients in one call — the bulk renewal. Both deltas may be negative. Clients on unlimited expiry or unlimited traffic are reported as skipped instead of being given a limit."),
+		mcp.WithArray("emails",
+			mcp.Required(),
+			mcp.Description("Emails of the clients to adjust"),
+			mcp.WithStringItems(),
+		),
+		mcp.WithNumber("add_days",
+			mcp.Description("Days to add to each expiry date; negative shortens it"),
+			mcp.DefaultNumber(0),
+		),
+		mcp.WithNumber("add_gb",
+			mcp.Description("GB to add to each traffic quota; negative reduces it"),
+			mcp.DefaultNumber(0),
+		),
+		mcp.WithString("flow",
+			mcp.Description("Set this flow on every listed client (e.g. 'xtls-rprx-vision'). Omit to leave each client's flow alone."),
+		),
+	), h.bulkAdjust)
+
+	s.AddTool(mcp.NewTool("delete_orphan_clients",
+		destroysPanel,
+		mcp.WithDescription("Delete every client attached to no inbound, together with its traffic record, IP log, devices and external links. Cleans up after inbounds were removed without their clients."),
+	), h.deleteOrphans)
+
+	s.AddTool(mcp.NewTool("export_clients",
+		readsPanel,
+		mcp.WithDescription("Count the clients in the panel and link to the full export at xui://clients/export. The export is the {client, inboundIds} array import_clients takes, so it round-trips — but it carries every UUID and password, so it stays behind the link unless full=true is passed."),
+		mcp.WithBoolean("full",
+			mcp.Description("Return the whole export inline instead of a count and a link"),
+			mcp.DefaultBool(false),
+		),
+	), h.export)
+
+	s.AddTool(mcp.NewTool("import_clients",
+		writesPanel,
+		mcp.WithDescription("Create clients from an exported array. Items already present are reported in a 'skipped' list rather than overwritten, so an import cannot clobber a live client."),
+		mcp.WithString("data",
+			mcp.Required(),
+			mcp.Description(`The export as a JSON string, e.g. [{"client":{"email":"alice","enable":true},"inboundIds":[7]}]`),
+		),
+	), h.importClients)
+
+	s.AddTool(mcp.NewTool("set_client_external_links",
+		destroysPanel,
+		mcp.WithDescription("Replace a client's external links and external subscriptions — servers from elsewhere that this panel serves alongside its own. The panel swaps the whole set, so send every row you want kept; an empty array clears them."),
+		mcp.WithString("email",
+			mcp.Required(),
+			mcp.Description("Client email"),
+		),
+		mcp.WithString("links",
+			mcp.Required(),
+			mcp.Description(`JSON array of rows, e.g. [{"kind":"link","value":"vless://...","remark":"DE","enable":true,"expiryTime":0},{"kind":"subscription","value":"https://provider.example/sub/abc","remark":"Provider","enable":true}]. Pass [] to remove them all.`),
+		),
+	), h.setExternalLinks)
+
+	s.AddTool(mcp.NewTool("list_clients_paged",
+		readsPanel,
+		mcp.WithDescription("Filter, sort and page through clients on the server instead of pulling the whole list. Rows are slim — no UUID, password or flow — so this is the tool for finding clients on a large panel; use get_client for the credentials of one."),
+		mcp.WithNumber("page",
+			mcp.Description("1-indexed page number"),
+			mcp.DefaultNumber(1),
+		),
+		mcp.WithNumber("page_size",
+			mcp.Description("Rows per page, capped at 200"),
+			mcp.DefaultNumber(25),
+		),
+		mcp.WithString("search",
+			mcp.Description("Case-insensitive match on email, subId or comment"),
+		),
+		mcp.WithString("filter",
+			mcp.Description("Status bucket to restrict to"),
+			mcp.Enum("online", "active", "deactive", "depleted", "expiring"),
+		),
+		mcp.WithString("protocol",
+			mcp.Description("Only clients attached to an inbound of this protocol"),
+		),
+		mcp.WithString("sort",
+			mcp.Description("Sort key"),
+			mcp.Enum("enable", "email", "inboundIds", "traffic", "remaining", "expiryTime"),
+		),
+		mcp.WithString("order",
+			mcp.Description("Sort direction"),
+			mcp.Enum("ascend", "descend"),
+		),
+	), h.listPaged)
+
+	s.AddTool(mcp.NewTool("bulk_attach_clients",
+		updatesPanel,
+		mcp.WithDescription("Attach many existing clients to many inbounds in one call. Each client keeps its email, UUID, subId and its shared traffic row, so the same credentials work on every inbound it is attached to."),
+		mcp.WithArray("emails",
+			mcp.Required(),
+			mcp.Description("Emails of the clients to attach"),
+			mcp.WithStringItems(),
+		),
+		mcp.WithArray("inbound_ids",
+			mcp.Required(),
+			mcp.Description("Inbounds to attach them to"),
+			mcp.WithNumberItems(),
+		),
+	), h.bulkAttach)
+
+	s.AddTool(mcp.NewTool("bulk_detach_clients",
+		destroysPanel,
+		mcp.WithDescription("Detach many clients from many inbounds without deleting them. A client detached from its last inbound keeps existing but is served nowhere — delete_orphan_clients is what removes those."),
+		mcp.WithArray("emails",
+			mcp.Required(),
+			mcp.Description("Emails of the clients to detach"),
+			mcp.WithStringItems(),
+		),
+		mcp.WithArray("inbound_ids",
+			mcp.Required(),
+			mcp.Description("Inbounds to detach them from"),
+			mcp.WithNumberItems(),
+		),
+	), h.bulkDetach)
+
+	s.AddTool(mcp.NewTool("get_active_inbounds",
+		readsPanel,
+		mcp.WithDescription("List the inbound tags that carried traffic in the last heartbeat window, grouped by the node hosting them. Pairs with get_online_clients_by_node to see which node is actually serving what."),
+	), h.activeInbounds)
+
+	s.AddTool(mcp.NewTool("get_online_clients_by_node",
+		readsPanel,
+		mcp.WithDescription("List online client emails grouped by the node each one is connected to. get_online_clients answers the same question for this panel alone; this one attributes them across the cluster."),
+	), h.onlinesByNode)
+
+	s.AddTool(mcp.NewTool("get_client_ips_by_node",
+		readsPanel,
+		mcp.WithDescription("List per-client source IPs grouped by the node that observed them — the cluster-wide view behind per-client IP limits."),
+	), h.clientIPsByNode)
+
 }
 
 func (h *clientHandler) getSubscriptionLinks(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -675,4 +891,168 @@ func (h *clientHandler) updateTraffic(ctx context.Context, req mcp.CallToolReque
 		return mcp.NewToolResultError("download is required"), nil
 	}
 	return toResult(h.client.UpdateClientTraffic(ctx, email, int64(upload), int64(download)))
+}
+
+func (h *clientHandler) getByTelegramID(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	tgID, err := req.RequireFloat("tg_id")
+	if err != nil {
+		return mcp.NewToolResultError("tg_id is required"), nil
+	}
+	return toResult(h.client.GetClientsByTelegramID(ctx, int64(tgID)))
+}
+
+func (h *clientHandler) listDevices(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	email, err := req.RequireString("email")
+	if err != nil {
+		return mcp.NewToolResultError("email is required"), nil
+	}
+	return toResult(h.client.ListClientDevices(ctx, email))
+}
+
+func (h *clientHandler) deleteDevice(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	email, err := req.RequireString("email")
+	if err != nil {
+		return mcp.NewToolResultError("email is required"), nil
+	}
+	deviceID, err := req.RequireFloat("device_id")
+	if err != nil {
+		return mcp.NewToolResultError("device_id is required"), nil
+	}
+	return toResult(h.client.DeleteClientDevice(ctx, email, int(deviceID)))
+}
+
+func (h *clientHandler) clearDevices(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	email, err := req.RequireString("email")
+	if err != nil {
+		return mcp.NewToolResultError("email is required"), nil
+	}
+	return toResult(h.client.ClearClientDevices(ctx, email))
+}
+
+func (h *clientHandler) bulkEnable(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	emails := req.GetStringSlice("emails", nil)
+	if len(emails) == 0 {
+		return mcp.NewToolResultError("emails is required (at least one email)"), nil
+	}
+	return toResult(h.client.BulkEnableClients(ctx, emails))
+}
+
+func (h *clientHandler) bulkDisable(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	emails := req.GetStringSlice("emails", nil)
+	if len(emails) == 0 {
+		return mcp.NewToolResultError("emails is required (at least one email)"), nil
+	}
+	return toResult(h.client.BulkDisableClients(ctx, emails))
+}
+
+func (h *clientHandler) bulkAdjust(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	emails := req.GetStringSlice("emails", nil)
+	if len(emails) == 0 {
+		return mcp.NewToolResultError("emails is required (at least one email)"), nil
+	}
+	addDays := int(req.GetFloat("add_days", 0))
+	addBytes := int64(req.GetFloat("add_gb", 0) * bytesPerGB)
+	if addDays == 0 && addBytes == 0 && req.GetString("flow", "") == "" {
+		return mcp.NewToolResultError("nothing to adjust: pass add_days, add_gb or flow"), nil
+	}
+	return toResult(h.client.BulkAdjustClients(ctx, emails, addDays, addBytes, req.GetString("flow", "")))
+}
+
+func (h *clientHandler) deleteOrphans(ctx context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return toResult(h.client.DeleteOrphanClients(ctx))
+}
+
+func (h *clientHandler) export(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	resp, err := h.client.ExportClients(ctx)
+	if req.GetBool("full", false) {
+		return toResult(resp, err)
+	}
+	return linkedResult(resp, err, mcp.NewResourceLink(
+		clientsExportURI,
+		"Client export",
+		"Every client as {client, inboundIds}, credentials included. Read it to back up or to feed import_clients.",
+		"application/json",
+	), summarizeClientExport)
+}
+
+func (h *clientHandler) importClients(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	data, err := req.RequireString("data")
+	if err != nil {
+		return mcp.NewToolResultError("data is required"), nil
+	}
+	if !json.Valid([]byte(data)) {
+		return mcp.NewToolResultError("data must be a JSON array of {client, inboundIds} objects"), nil
+	}
+	return toResult(h.client.ImportClients(ctx, data))
+}
+
+func (h *clientHandler) setExternalLinks(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	email, err := req.RequireString("email")
+	if err != nil {
+		return mcp.NewToolResultError("email is required"), nil
+	}
+	raw, err := req.RequireString("links")
+	if err != nil {
+		return mcp.NewToolResultError("links is required"), nil
+	}
+	var links []map[string]any
+	if err := json.Unmarshal([]byte(raw), &links); err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("links must be a JSON array: %v", err)), nil
+	}
+	return toResult(h.client.SetClientExternalLinks(ctx, email, links))
+}
+
+func (h *clientHandler) listPaged(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	query := url.Values{
+		"page":     {strconv.Itoa(int(req.GetFloat("page", 1)))},
+		"pageSize": {strconv.Itoa(int(req.GetFloat("page_size", 25)))},
+	}
+	for param, key := range map[string]string{
+		"search":   "search",
+		"filter":   "filter",
+		"protocol": "protocol",
+		"sort":     "sort",
+		"order":    "order",
+	} {
+		if v := req.GetString(param, ""); v != "" {
+			query.Set(key, v)
+		}
+	}
+	return toResult(h.client.ListClientsPaged(ctx, query))
+}
+
+func (h *clientHandler) bulkAttach(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	emails := req.GetStringSlice("emails", nil)
+	if len(emails) == 0 {
+		return mcp.NewToolResultError("emails is required (at least one email)"), nil
+	}
+	inboundIDs := req.GetIntSlice("inbound_ids", nil)
+	if len(inboundIDs) == 0 {
+		return mcp.NewToolResultError("inbound_ids is required (at least one inbound)"), nil
+	}
+	return toResult(h.client.BulkAttachClients(ctx, emails, inboundIDs))
+}
+
+func (h *clientHandler) bulkDetach(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	emails := req.GetStringSlice("emails", nil)
+	if len(emails) == 0 {
+		return mcp.NewToolResultError("emails is required (at least one email)"), nil
+	}
+	inboundIDs := req.GetIntSlice("inbound_ids", nil)
+	if len(inboundIDs) == 0 {
+		return mcp.NewToolResultError("inbound_ids is required (at least one inbound)"), nil
+	}
+	return toResult(h.client.BulkDetachClients(ctx, emails, inboundIDs))
+}
+
+func (h *clientHandler) activeInbounds(ctx context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return toResult(h.client.ActiveInbounds(ctx))
+}
+
+func (h *clientHandler) onlinesByNode(ctx context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return toResult(h.client.OnlinesByNode(ctx))
+}
+
+func (h *clientHandler) clientIPsByNode(ctx context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return toResult(h.client.ClientIPsByNode(ctx))
 }

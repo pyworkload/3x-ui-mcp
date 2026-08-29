@@ -8,10 +8,13 @@ MCP (Model Context Protocol) server for [3x-ui](https://github.com/MHSanaei/3x-u
 
 ## Features
 
-- 65 MCP tools covering the full 3x-ui API (3x-ui v3.3.0+ — see [Panel versions](#panel-versions))
+- 166 MCP tools covering essentially the whole 3x-ui API: inbounds, clients, groups, hosts, nodes, routing, balancers, geodata, metrics, tokens, panel maintenance (3x-ui v3.3.0+ — see [Panel versions](#panel-versions))
 - Two auth modes: session login with CSRF, or a Bearer API token (`XUI_API_TOKEN`)
 - Automatic session management with transparent re-authentication and CSRF refresh
 - Email-keyed client model: attach/detach across inbounds, bulk operations, paged listing
+- Annotated tools: a client can tell a read-only call from a destructive one before running it
+- Lazy by default: bulky payloads come back as a summary plus a `resource_link`, fetched only if needed
+- `XUI_TOOLSETS` narrows which tool groups load, cutting the context they occupy
 - Stdio transport for seamless LLM integration
 - Zero external dependencies beyond the MCP SDK
 
@@ -64,6 +67,7 @@ Download from [Releases](https://github.com/pyworkload/3x-ui-mcp/releases), then
 | `XUI_USERNAME` | Yes¹ | Admin username | `admin` |
 | `XUI_PASSWORD` | Yes¹ | Admin password | `admin` |
 | `XUI_API_TOKEN` | No | Bearer API token. Bypasses CSRF for `/panel/api/*` | `eyJ…` |
+| `XUI_TOOLSETS` | No | Tool groups to expose (default: all) | `clients,metrics` |
 | `XUI_BASE_PATH` | No | Panel base path (default: `/`) | `/xui/` |
 | `XUI_LOG_LEVEL` | No | Log level (default: `info`) | `debug`, `info`, `warn`, `error` |
 
@@ -77,7 +81,23 @@ Download from [Releases](https://github.com/pyworkload/3x-ui-mcp/releases), then
 - **Bearer API token** (`XUI_API_TOKEN`): the token is sent on every request and
   the panel accepts it for `/panel/api/*` routes without CSRF — on v3.3.0+ that
   covers every tool here, settings and Xray templates included.
-  Create a token in the panel under **Settings → API Tokens**.
+  Create a token in the panel under **Settings → Security → API Token**.
+
+  Since **v3.7.0** tokens are scoped and may carry an expiry, so give this server the
+  **`admin`** scope. The other two do not fit it: `monitor` is a short allowlist of
+  status and metrics routes (of the tools here only `server_status` and
+  `get_xray_versions` fall inside it), and `node-sync` is a fixed allowlist for
+  panel-to-node traffic. The plaintext token is shown once at creation — the panel
+  keeps a SHA-256 hash. Also note that `x-ui setting -getApiToken` on the CLI now
+  *rotates* a single shared `cli-fallback` token instead of minting a new one, so
+  running it again invalidates a token you handed out earlier.
+
+**Narrowing the toolset:** all 166 tool schemas together occupy roughly 28k tokens
+of model context in every session — worth narrowing. `XUI_TOOLSETS` loads only
+the groups you need: `inbounds`, `clients`, `server`, `xray`, `metrics`,
+`groups`, `geodata`, `hosts`, `nodes`, `tokens`, `providers`, `maintenance`, or
+`all`. `XUI_TOOLSETS=clients,metrics` leaves 44 tools at about 7k tokens. An
+unknown name fails at startup rather than silently loading nothing.
 
 ## Panel versions
 
@@ -98,10 +118,30 @@ version listed:
 |---|---|
 | `get_balancers`, `set_balancer_override`, `test_route` | v3.3.1 |
 | `scan_reality_target`, `scan_reality_targets`, `get_all_inbound_links` | v3.4.2 |
+| Observability, client groups, bulk client state, inbound projections and fallbacks | v3.5.0 |
+| Host groups, API tokens, client export/import, external links, Warp and NordVPN | v3.5.0 |
+| Multi-node tools | v3.5.0 |
+| Maintenance, certificate helpers, cluster client views, `test_outbounds` | v3.5.0 |
+| Geodata, HWID devices, `get_clients_by_telegram_id`, `set_inbound_sub_sort_index` | v3.7.0 |
+| Subscription balancers, PIA, `reload_node_mtls_client`, and token `scope`/`expires_at` | v3.7.0 |
+| `validate_regex`, `get_factory_defaults`, `get_panel_update_status`, `get_amneziawg_logs` | v3.7.0 |
+
+The last two rows are bounded by the panel's own generated `openapi.json`, which
+only starts at v3.5.0 — some of those routes may predate it.
+
+Tested against **v3.7.0**, the current panel release: every tool here was run
+against a live v3.7.0 panel. Not wrapped yet: nodes, host groups, API token
+management, subscription balancers, the WARP/Nord/PIA outbound helpers, and
+client export/import.
 
 ## MCP Tools
 
-### Inbound Management (10 tools)
+Every tool is annotated with its effect on the panel — read-only, additive,
+destructive, or service-interrupting — and with whether it reaches a host outside
+the panel. MCP clients use those hints to auto-approve safe calls and to ask
+before the rest.
+
+### Inbound Management (15 tools)
 
 | Tool | Description |
 |---|---|
@@ -114,9 +154,14 @@ version listed:
 | `reset_inbound_traffic` | Zero one inbound's traffic counters |
 | `delete_all_inbound_clients` | Remove every client from an inbound, keeping the inbound |
 | `bulk_delete_inbounds` | Delete several inbounds in one call |
-| `get_all_inbound_links` | Connection URLs for every client across every inbound |
+| `get_all_inbound_links` | Counts the connection URLs and links to the full list (`full=true` inlines them) |
+| `list_inbounds_slim` | Inbounds with client arrays trimmed — the cheap listing for large panels |
+| `get_inbound_options` | Picker projection: id, remark, tag, protocol, port, capability flags |
+| `get_inbound_fallbacks` | Fallback rules on a master VLESS/Trojan TCP-TLS inbound |
+| `set_inbound_fallbacks` | Replace the whole fallback list (restarts Xray) |
+| `set_inbound_sub_sort_index` | Set an inbound's position in subscription output |
 
-### Client Management (21 tools)
+### Client Management (38 tools)
 
 Clients are email-keyed entities that can be attached to several inbounds at once.
 
@@ -143,6 +188,23 @@ Clients are email-keyed entities that can be attached to several inbounds at onc
 | `get_last_online` | Last-online timestamp for every client |
 | `update_client_traffic` | Set specific upload/download byte counters for a client |
 | `get_subscription_links` | Connection URLs served under a subscription ID, as JSON |
+| `get_clients_by_telegram_id` | Find clients by Telegram user ID |
+| `list_client_devices` | HWID devices registered for a client |
+| `delete_client_device` | Remove one registered device, freeing an HWID slot |
+| `clear_client_devices` | Drop every registered device for a client |
+| `bulk_enable_clients` | Enable many clients, one rewrite per owning inbound |
+| `bulk_disable_clients` | Disable many clients, one rewrite per owning inbound |
+| `bulk_adjust_clients` | Shift expiry and quota for many clients — the bulk renewal |
+| `delete_orphan_clients` | Delete clients attached to no inbound, with their records |
+| `export_clients` | Counts the clients and links to the full export (`full=true` inlines it) |
+| `import_clients` | Create clients from an exported array; existing emails are skipped |
+| `set_client_external_links` | Replace a client's external links and subscriptions |
+| `list_clients_paged` | Server-side filtering, sorting and paging over clients |
+| `bulk_attach_clients` | Attach many clients to many inbounds at once |
+| `bulk_detach_clients` | Detach many clients from many inbounds at once |
+| `get_active_inbounds` | Inbound tags that carried traffic, grouped by node |
+| `get_online_clients_by_node` | Online clients grouped by the node serving them |
+| `get_client_ips_by_node` | Per-client source IPs grouped by the node that saw them |
 
 ### Server Management (14 tools)
 
@@ -151,7 +213,7 @@ Clients are email-keyed entities that can be attached to several inbounds at onc
 | `server_status` | Get server system status (CPU, RAM, disk, uptime) |
 | `restart_xray` | Restart Xray service |
 | `stop_xray` | Stop Xray service |
-| `get_xray_config` | Get current Xray runtime configuration |
+| `get_xray_config` | Summarizes the running Xray config and links to the full JSON (`full=true` inlines it) |
 | `get_xray_versions` | List available Xray versions |
 | `install_xray` | Install a specific Xray version |
 | `get_logs` | Get panel service logs |
@@ -163,11 +225,11 @@ Clients are email-keyed entities that can be attached to several inbounds at onc
 | `scan_reality_target` | Probe one REALITY candidate and report whether it is usable |
 | `scan_reality_targets` | Probe domains, IPs or CIDR ranges, ranked by feasibility and latency |
 
-### Xray Configuration (20 tools)
+### Xray Configuration (21 tools)
 
 | Tool | Description |
 |---|---|
-| `get_xray_template` | Get Xray JSON template |
+| `get_xray_template` | Summarizes the template and links to the full JSON (`full=true` inlines it) |
 | `update_xray_template` | Update Xray JSON template |
 | `get_routing_rules` | List all routing rules (and the balancers they reference) |
 | `add_routing_rule` | Add a routing rule |
@@ -187,6 +249,197 @@ Clients are email-keyed entities that can be attached to several inbounds at onc
 | `refresh_outbound_sub` | Re-fetch a subscription now and return its outbounds |
 | `move_outbound_sub` | Move a subscription up/down in priority |
 | `delete_outbound_sub` | Delete an outbound subscription |
+
+### Host Groups (11 tools)
+
+A host group publishes one or more inbounds under external addresses — a CDN
+hostname, a second port, a different SNI — and the panel renders subscription
+links against them. Groups are addressed by a string `group_id`.
+
+| Tool | Description |
+|---|---|
+| `list_hosts` | Every host group across all inbounds |
+| `get_host_group` | One group by its ID |
+| `get_inbound_hosts` | The groups attached to one inbound |
+| `list_host_tags` | Distinct tags used across the groups |
+| `add_host_group` | Create a group over a set of inbounds |
+| `update_host_group` | Update a group, keeping the fields you omit |
+| `delete_host_group` | Delete a group and its hosts |
+| `set_host_group_enable` | Enable or disable one group |
+| `reorder_host_groups` | Set the order groups appear in |
+| `bulk_delete_host_groups` | Delete several groups at once |
+| `bulk_set_host_groups_enable` | Flip several groups at once |
+
+`add_host_group` and `update_host_group` expose the fields a group is normally
+built from; `raw_json` sends a complete HostGroup for the rest (mux, sockopt,
+ECH, final mask).
+
+### Subscription Balancers (4 tools)
+
+Client-side balancers: each appears in the JSON subscription of every client on
+one of its inbounds, and the client app picks a server by the strategy. Not to
+be confused with `get_balancers`, which reports the routing balancers running
+inside Xray.
+
+| Tool | Description |
+|---|---|
+| `list_sub_balancers` | Every subscription balancer in sort order |
+| `create_sub_balancer` | Add one over a set of inbounds |
+| `update_sub_balancer` | Update one, keeping the fields you omit |
+| `delete_sub_balancer` | Remove one |
+
+### API Tokens (4 tools)
+
+| Tool | Description |
+|---|---|
+| `list_api_tokens` | Token metadata; the values themselves are never returned |
+| `create_api_token` | Mint a scoped token — the plaintext is shown only once |
+| `set_api_token_enabled` | Disable or re-enable a token without deleting it |
+| `delete_api_token` | Delete a token permanently |
+
+`delete_api_token` and `set_api_token_enabled` take the token's stored `scope`;
+the panel fails closed unless it matches, so a token cannot be flipped by
+guessing its ID.
+
+### Outbound Providers (6 tools)
+
+Cloudflare Warp, NordVPN and PIA each get a read tool and a write tool, so
+querying a country list is annotated differently from erasing credentials.
+
+| Tool | Description |
+|---|---|
+| `get_warp_data` | Warp account state or the stored WireGuard config |
+| `manage_warp` | Register, rotate the IP, apply a license, set rotation, or erase |
+| `get_nordvpn_data` | Countries, servers in a country, or the stored account |
+| `manage_nordvpn` | Register with a token, set a key, or erase |
+| `get_pia_data` | Regions, servers in a region, or the stored account |
+| `manage_pia` | Log in, register a key against a server, or erase |
+
+### Panel Maintenance (19 tools)
+
+| Tool | Description |
+|---|---|
+| `get_fail2ban_status` | Whether per-client IP limits can be enforced on this host |
+| `get_web_cert_files` | This panel's own TLS certificate and key paths |
+| `get_cert_hash` | SHA-256 of a certificate, for pinning |
+| `get_remote_cert_hash` | SHA-256 of a remote server's live certificate |
+| `generate_ech_cert` | An ECH keypair and config list for one SNI |
+| `update_geofile` | Download fresh GeoIP/GeoSite data files |
+| `get_panel_update_status` | How the last panel self-update ended |
+| `set_update_channel` | Switch between the stable and dev channels |
+| `update_panel` | Self-update the panel (it restarts) |
+| `get_amneziawg_logs` | Live AmneziaWG peer activity and events |
+| `get_node_descendants` | The nodes below this panel in the cluster tree |
+| `get_client_ips_table` | The aggregated client-IP table behind IP limits |
+| `backup_to_telegram` | Send a database backup to the admin Telegram chats |
+| `test_smtp` | Test SMTP with stage-by-stage reporting |
+| `test_telegram_bot` | Send a test message through the configured bot |
+| `validate_regex` | Compile a pattern with the panel's Go RE2 engine |
+| `get_default_settings` | Preview what a fresh install would compute |
+| `get_factory_defaults` | The shipped default per setting key |
+| `update_admin_credentials` | Change the panel admin username and password |
+
+`update_admin_credentials` invalidates the credentials this server itself uses:
+update `XUI_USERNAME` / `XUI_PASSWORD` and restart it afterwards, or switch to
+an API token first.
+
+### Multi-Node (16 tools)
+
+A node is another 3x-ui panel this one drives: inbounds and clients are pushed
+to it and its traffic is pulled back. Most of these calls reach the node itself,
+not just this panel.
+
+| Tool | Description |
+|---|---|
+| `list_nodes` | Configured nodes with health, counts and last heartbeat |
+| `get_node` | One node's connection details and sync state |
+| `get_node_history` | CPU or memory history for one node |
+| `get_node_web_cert` | The certificate and key paths that exist on the node |
+| `test_node` | Probe connection details without saving them |
+| `list_node_inbounds` | The inbounds available on a node, for selective sync |
+| `get_node_cert_fingerprint` | SHA-256 of the node's leaf certificate, for pinning |
+| `add_node` | Register a node (probed before it is saved) |
+| `update_node` | Update a node, keeping the fields you omit |
+| `set_node_enable` | Pause or resume traffic sync with a node |
+| `probe_node` | Probe a registered node and refresh its cached health |
+| `delete_node` | Delete a node; its inbounds are not migrated |
+| `get_node_mtls_ca` | This panel's node-auth CA, minted on first call |
+| `set_node_mtls_trust_ca` | The CA this panel trusts when acting as a node |
+| `reload_node_mtls_client` | Apply a rotated client certificate without a restart |
+| `update_node_panels` | Run the 3x-ui self-updater on the given nodes |
+
+The node API token is write-only from v3.6.0: the panel reports only whether one
+is set, so `update_node` omits it unless you pass a new one, and `clear_api_token`
+is how a node moved to mTLS drops the old token.
+
+### Client Groups (8 tools)
+
+A group is a label carried both by the client record and by every owning
+inbound's settings; the panel keeps the two in step in one transaction.
+
+| Tool | Description |
+|---|---|
+| `list_client_groups` | Every group with its member count, including empty ones |
+| `get_client_group_emails` | Emails in one group — the input for a bulk action |
+| `create_client_group` | Create an empty, selectable group |
+| `rename_client_group` | Rename a group and repoint every member |
+| `delete_client_group` | Drop a group, keeping its clients |
+| `add_clients_to_group` | Label many clients with one group |
+| `remove_clients_from_group` | Clear the group label on many clients |
+| `reset_client_group_traffic` | Zero the group counter, leaving per-client counters running |
+
+### Observability (6 tools)
+
+| Tool | Description |
+|---|---|
+| `get_metrics_history` | Time-series for one host metric (cpu, mem, netUp/Down, online, load) |
+| `get_xray_metrics` | Xray runtime metrics state and current expvar values |
+| `get_xray_metrics_history` | Time-series for one Xray runtime metric |
+| `get_xray_observatory` | Latest per-outbound latency and health snapshot |
+| `get_xray_observatory_history` | Probe results over time for one outbound tag |
+| `get_panel_update_info` | Whether a newer 3x-ui release is out |
+
+The history tools take a `bucket` in seconds and always return 60 samples, so
+the bucket picks the window too: 2 (2m), 30 (30m), 60 (1h), 180 (3h), 360 (6h),
+720 (12h), 1440 (24h), 2880 (2d), 10080 (7d).
+
+### Geodata (4 tools)
+
+| Tool | Description |
+|---|---|
+| `list_geodata_files` | Geo databases in Xray's asset folder, with layout and category count |
+| `list_geodata_categories` | Categories in one database, with entry counts and attributes |
+| `list_geodata_entries` | The rules inside a category — typed domains or CIDRs |
+| `validate_geodata_tokens` | Report routing tokens that do not resolve, with a reason |
+
+**Deliberately not wrapped:** `server/getDb`, `server/getMigration` and
+`server/importDB` move database files as attachments and multipart uploads
+rather than JSON, so they belong in a browser or a backup script, not here.
+`inbounds/pushClientTraffics` and `POST server/clientIps` are the inbound half
+of node sync — endpoints a node receives on, not ones a client calls.
+
+## Resources
+
+Tools spend context on their results whether or not the caller needed all of it.
+Resources are the lazy half: each costs one line in `resources/list` and is read
+only when something asks for the URI. The three bulkiest tools answer with a
+summary plus a `resource_link` to the matching resource — a running Xray config
+is ~9k characters, and its summary is under 500.
+
+| URI | Contents |
+|---|---|
+| `xui://docs/inbound-settings` | The settings, streamSettings and sniffing JSON, with an example per protocol |
+| `xui://docs/client-fields` | What each client field means and the units it uses |
+| `xui://xray/config` | The config the core is running right now |
+| `xui://xray/template` | The saved template: routing, balancers, outbounds, DNS |
+| `xui://inbounds` | Every inbound with settings and per-client stats |
+| `xui://inbounds/links` | Connection URLs for every client |
+| `xui://clients/export` | Every client as `{client, inboundIds}`, credentials included |
+| `xui://inbound/{id}` | One inbound by numeric ID |
+| `xui://client/{email}` | One client record by email |
+
+The two `xui://docs/…` resources are static reference text, so reading them
+costs no panel call.
 
 ## Architecture
 

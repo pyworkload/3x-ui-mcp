@@ -749,3 +749,27 @@ func TestIsRelocatedRoute(t *testing.T) {
 		}
 	}
 }
+
+// An unconfigured client is what a registry crawler or a first-run misconfigured
+// desktop client gets: the server started, the tools are listed, and the failure
+// has to arrive on the call itself — without touching the network.
+func TestUnconfigured_CallFailsWithConfigError(t *testing.T) {
+	t.Setenv("XUI_HOST", "")
+	t.Setenv("XUI_USERNAME", "")
+	t.Setenv("XUI_PASSWORD", "")
+	t.Setenv("XUI_API_TOKEN", "")
+
+	cfg, err := config.Load()
+	if err == nil {
+		t.Fatal("expected the empty environment to fail validation")
+	}
+
+	client := NewClient(cfg, slog.Default())
+	_, err = client.Get(context.Background(), "panel/api/inbounds/list")
+	if err == nil {
+		t.Fatal("expected an error from an unconfigured client, got nil")
+	}
+	if !strings.Contains(err.Error(), "XUI_HOST") {
+		t.Errorf("error should name the missing setting, got: %v", err)
+	}
+}

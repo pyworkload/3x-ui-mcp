@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"strconv"
 )
 
 // --- Server management API methods ---
@@ -127,4 +128,125 @@ func (c *Client) GetDefaultXrayConfig(ctx context.Context) (*Response, error) {
 // RestartPanel restarts the 3x-ui panel itself.
 func (c *Client) RestartPanel(ctx context.Context) (*Response, error) {
 	return c.Post(ctx, "panel/api/setting/restartPanel")
+}
+
+// --- Maintenance and diagnostics (panel v3.5.0+) ---
+
+// Fail2banStatus reports whether per-client IP limits can be enforced here,
+// which depends on fail2ban being installed and usable.
+func (c *Client) Fail2banStatus(ctx context.Context) (*Response, error) {
+	return c.Get(ctx, "panel/api/server/fail2banStatus")
+}
+
+// WebCertFiles returns this panel's own web TLS certificate and key paths.
+func (c *Client) WebCertFiles(ctx context.Context) (*Response, error) {
+	return c.Get(ctx, "panel/api/server/getWebCertFiles")
+}
+
+// CertHash computes the SHA-256 of a certificate for pinning. Pass either a
+// path on the panel host or the certificate content inline.
+func (c *Client) CertHash(ctx context.Context, certFile, certContent string) (*Response, error) {
+	return c.PostForm(ctx, "panel/api/server/getCertHash", url.Values{
+		"certFile":    {certFile},
+		"certContent": {certContent},
+	})
+}
+
+// RemoteCertHash runs `xray tls ping` against a remote server and returns its
+// live leaf certificate hashes.
+func (c *Client) RemoteCertHash(ctx context.Context, server string) (*Response, error) {
+	return c.PostForm(ctx, "panel/api/server/getRemoteCertHash", url.Values{"server": {server}})
+}
+
+// NewEchCert generates an ECH keypair and config list for one SNI.
+func (c *Client) NewEchCert(ctx context.Context, sni string) (*Response, error) {
+	return c.PostForm(ctx, "panel/api/server/getNewEchCert", url.Values{"sni": {sni}})
+}
+
+// UpdateGeofile refreshes the GeoIP/GeoSite data files. An empty fileName
+// refreshes the default set; otherwise the name goes in the path.
+func (c *Client) UpdateGeofile(ctx context.Context, fileName string) (*Response, error) {
+	if fileName == "" {
+		return c.Post(ctx, "panel/api/server/updateGeofile")
+	}
+	return c.Post(ctx, "panel/api/server/updateGeofile/"+url.PathEscape(fileName))
+}
+
+// PanelUpdateStatus reports how the last self-update run ended.
+func (c *Client) PanelUpdateStatus(ctx context.Context) (*Response, error) {
+	return c.Get(ctx, "panel/api/server/getUpdateStatus")
+}
+
+// SetUpdateChannel switches the panel between the stable and dev channels.
+func (c *Client) SetUpdateChannel(ctx context.Context, dev bool) (*Response, error) {
+	return c.PostForm(ctx, "panel/api/server/setUpdateChannel", url.Values{
+		"dev": {strconv.FormatBool(dev)},
+	})
+}
+
+// UpdatePanel self-updates the panel; the server restarts on success.
+func (c *Client) UpdatePanel(ctx context.Context) (*Response, error) {
+	return c.Post(ctx, "panel/api/server/updatePanel")
+}
+
+// AmneziaWGLogs returns live AmneziaWG peer activity plus the panel's own
+// AmneziaWG event lines.
+func (c *Client) AmneziaWGLogs(ctx context.Context, count int) (*Response, error) {
+	return c.Post(ctx, fmt.Sprintf("panel/api/server/amneziawglogs/%d", count))
+}
+
+// Descendants summarizes the nodes this panel manages, as a node reports them
+// to its parent.
+func (c *Client) Descendants(ctx context.Context) (*Response, error) {
+	return c.Get(ctx, "panel/api/server/descendants")
+}
+
+// ClientIPsTable returns the aggregated inbound_client_ips table, the
+// cluster-wide view behind per-client IP limits.
+func (c *Client) ClientIPsTable(ctx context.Context) (*Response, error) {
+	return c.Get(ctx, "panel/api/server/clientIps")
+}
+
+// BackupToTelegram sends a fresh database backup to every configured admin chat.
+func (c *Client) BackupToTelegram(ctx context.Context) (*Response, error) {
+	return c.Post(ctx, "panel/api/backuptotgbot")
+}
+
+// TestSMTP runs the SMTP connection test, reporting the stage it reached.
+func (c *Client) TestSMTP(ctx context.Context) (*Response, error) {
+	return c.Post(ctx, "panel/api/setting/testSmtp")
+}
+
+// TestTelegramBot sends a test message to the configured Telegram chat.
+func (c *Client) TestTelegramBot(ctx context.Context) (*Response, error) {
+	return c.Post(ctx, "panel/api/setting/testTgBot")
+}
+
+// ValidateRegex compiles a regular expression with the panel's Go RE2 engine
+// without saving it anywhere.
+func (c *Client) ValidateRegex(ctx context.Context, regex string) (*Response, error) {
+	return c.PostJSON(ctx, "panel/api/setting/validateRegex", map[string]any{"regex": regex})
+}
+
+// DefaultSettings returns the settings a fresh install would compute for this
+// host — a preview, not a write.
+func (c *Client) DefaultSettings(ctx context.Context) (*Response, error) {
+	return c.Post(ctx, "panel/api/setting/defaultSettings")
+}
+
+// FactorySettings returns the shipped default per setting key, so a stored
+// value can be told apart from the default it would fall back to.
+func (c *Client) FactorySettings(ctx context.Context) (*Response, error) {
+	return c.Post(ctx, "panel/api/setting/factoryDefaults")
+}
+
+// UpdateAdminUser changes the panel admin credentials, verifying the current
+// ones first. Anything authenticating with the old pair stops working.
+func (c *Client) UpdateAdminUser(ctx context.Context, oldUsername, oldPassword, newUsername, newPassword string) (*Response, error) {
+	return c.PostJSON(ctx, "panel/api/setting/updateUser", map[string]any{
+		"oldUsername": oldUsername,
+		"oldPassword": oldPassword,
+		"newUsername": newUsername,
+		"newPassword": newPassword,
+	})
 }

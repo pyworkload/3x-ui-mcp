@@ -13,10 +13,18 @@ type Config struct {
 	BasePath string // Panel base path, e.g. "/" or "/custom/"
 	Username string
 	Password string
-	APIToken string // Optional Bearer API token (3x-ui v3.2.8+). When set, /panel/api/* calls bypass CSRF.
+	APIToken string   // Optional Bearer API token (3x-ui v3.2.8+). When set, /panel/api/* calls bypass CSRF.
+	Toolsets []string // Tool groups to expose; empty means every group.
+
+	err error // validation failure, if any; see Err
 }
 
 // Load reads configuration from environment variables and validates it.
+//
+// A validation failure is returned as an error but is also recorded on the
+// Config, which is never nil: the MCP server still starts on an incomplete
+// configuration so a client (or a registry crawler) can read tools/list without
+// a reachable panel. The failure then surfaces on the first panel call.
 func Load() (*Config, error) {
 	cfg := &Config{
 		Host:     os.Getenv("XUI_HOST"),
@@ -24,6 +32,7 @@ func Load() (*Config, error) {
 		Username: os.Getenv("XUI_USERNAME"),
 		Password: os.Getenv("XUI_PASSWORD"),
 		APIToken: os.Getenv("XUI_API_TOKEN"),
+		Toolsets: splitList(os.Getenv("XUI_TOOLSETS")),
 	}
 
 	if cfg.BasePath == "" {
@@ -31,12 +40,15 @@ func Load() (*Config, error) {
 	}
 
 	if err := cfg.validate(); err != nil {
-		return nil, fmt.Errorf("config validation: %w", err)
+		cfg.err = fmt.Errorf("config validation: %w", err)
 	}
 
 	cfg.normalize()
-	return cfg, nil
+	return cfg, cfg.err
 }
+
+// Err reports why the configuration is unusable, or nil when it is complete.
+func (c *Config) Err() error { return c.err }
 
 func (c *Config) validate() error {
 	var errs []string
@@ -71,6 +83,18 @@ func (c *Config) normalize() {
 	if !strings.HasSuffix(c.BasePath, "/") {
 		c.BasePath += "/"
 	}
+}
+
+// splitList parses a comma-separated environment value into trimmed, lowercased
+// entries, dropping empties so "clients, ,inbounds," behaves as expected.
+func splitList(raw string) []string {
+	var out []string
+	for _, part := range strings.Split(raw, ",") {
+		if part = strings.ToLower(strings.TrimSpace(part)); part != "" {
+			out = append(out, part)
+		}
+	}
+	return out
 }
 
 // BaseURL returns the full base URL for API requests.

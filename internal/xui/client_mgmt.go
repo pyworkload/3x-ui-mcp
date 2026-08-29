@@ -2,6 +2,7 @@ package xui
 
 import (
 	"context"
+	"fmt"
 	"net/url"
 	"strconv"
 	"strings"
@@ -149,4 +150,121 @@ func (c *Client) UpdateClientTraffic(ctx context.Context, email string, upload, 
 		"upload":   upload,
 		"download": download,
 	})
+}
+
+// --- Client device and bulk-state methods (panel v3.6.0+/v3.7.0+) ---
+
+// GetClientsByTelegramID looks up clients by Telegram user ID. Several clients
+// can share one ID, so the panel answers with an array.
+func (c *Client) GetClientsByTelegramID(ctx context.Context, tgID int64) (*Response, error) {
+	return c.Get(ctx, fmt.Sprintf(clientsBase+"get/tgId/%d", tgID))
+}
+
+// ListClientDevices returns the HWID devices registered for a client. The
+// hashes themselves are never exposed, only the metadata around them.
+func (c *Client) ListClientDevices(ctx context.Context, email string) (*Response, error) {
+	return c.Post(ctx, clientsBase+"hwids/"+url.PathEscape(email))
+}
+
+// ClearClientDevices drops every registered device for a client, freeing all
+// slots under its HWID limit.
+func (c *Client) ClearClientDevices(ctx context.Context, email string) (*Response, error) {
+	return c.Delete(ctx, clientsBase+"hwids/"+url.PathEscape(email))
+}
+
+// DeleteClientDevice removes one registered device by the id from the list.
+func (c *Client) DeleteClientDevice(ctx context.Context, email string, deviceID int) (*Response, error) {
+	return c.Delete(ctx, fmt.Sprintf(clientsBase+"hwids/%s/%d", url.PathEscape(email), deviceID))
+}
+
+// BulkEnableClients enables many clients, one read-modify-write per inbound.
+func (c *Client) BulkEnableClients(ctx context.Context, emails []string) (*Response, error) {
+	return c.PostJSON(ctx, clientsBase+"bulkEnable", map[string]any{"emails": emails})
+}
+
+// BulkDisableClients disables many clients, one read-modify-write per inbound.
+func (c *Client) BulkDisableClients(ctx context.Context, emails []string) (*Response, error) {
+	return c.PostJSON(ctx, clientsBase+"bulkDisable", map[string]any{"emails": emails})
+}
+
+// DeleteOrphanClients deletes every client attached to no inbound, along with
+// its traffic record, IP log, devices and external links.
+func (c *Client) DeleteOrphanClients(ctx context.Context) (*Response, error) {
+	return c.Post(ctx, clientsBase+"delOrphans")
+}
+
+// BulkAdjustClients shifts expiry and quota for many clients at once; both
+// deltas may be negative. Clients on unlimited expiry or unlimited traffic are
+// reported back as skipped rather than converted to a limit. An empty flow
+// leaves each client's flow alone.
+func (c *Client) BulkAdjustClients(ctx context.Context, emails []string, addDays int, addBytes int64, flow string) (*Response, error) {
+	payload := map[string]any{
+		"emails":   emails,
+		"addDays":  addDays,
+		"addBytes": addBytes,
+	}
+	if flow != "" {
+		payload["flow"] = flow
+	}
+	return c.PostJSON(ctx, clientsBase+"bulkAdjust", payload)
+}
+
+// --- Client export/import and external links (panel v3.7.0+) ---
+
+// ExportClients returns every client as a {client, inboundIds} array — the
+// shape ImportClients and BulkCreateClients accept, so a panel round-trips.
+func (c *Client) ExportClients(ctx context.Context) (*Response, error) {
+	return c.Get(ctx, clientsBase+"export")
+}
+
+// ImportClients creates clients from an exported array. The panel takes the
+// array as a JSON *string* under "data", not as nested JSON.
+func (c *Client) ImportClients(ctx context.Context, data string) (*Response, error) {
+	return c.PostJSON(ctx, clientsBase+"import", map[string]any{"data": data})
+}
+
+// SetClientExternalLinks replaces a client's external links and subscriptions.
+// The panel swaps the whole set, so the caller sends every row it wants kept.
+func (c *Client) SetClientExternalLinks(ctx context.Context, email string, links any) (*Response, error) {
+	return c.PostJSON(ctx, clientsBase+url.PathEscape(email)+"/externalLinks", map[string]any{
+		"externalLinks": links,
+	})
+}
+
+// --- Cluster-wide client views and bulk attachment ---
+
+// BulkAttachClients attaches many existing clients to many inbounds at once.
+// Each client keeps its identity and its shared traffic row.
+func (c *Client) BulkAttachClients(ctx context.Context, emails []string, inboundIDs []int) (*Response, error) {
+	return c.PostJSON(ctx, clientsBase+"bulkAttach", map[string]any{
+		"emails":     emails,
+		"inboundIds": inboundIDs,
+	})
+}
+
+// BulkDetachClients is the mirror of BulkAttachClients: it removes the listed
+// clients from the listed inbounds without deleting them.
+func (c *Client) BulkDetachClients(ctx context.Context, emails []string, inboundIDs []int) (*Response, error) {
+	return c.PostJSON(ctx, clientsBase+"bulkDetach", map[string]any{
+		"emails":     emails,
+		"inboundIds": inboundIDs,
+	})
+}
+
+// ActiveInbounds returns the inbound tags that carried traffic in the last
+// heartbeat window, grouped by the panelGuid of the node hosting them.
+func (c *Client) ActiveInbounds(ctx context.Context) (*Response, error) {
+	return c.Post(ctx, clientsBase+"activeInbounds")
+}
+
+// OnlinesByNode returns online client emails grouped by the panelGuid of the
+// node each client is physically connected to.
+func (c *Client) OnlinesByNode(ctx context.Context) (*Response, error) {
+	return c.Post(ctx, clientsBase+"onlinesByGuid")
+}
+
+// ClientIPsByNode returns per-client source IPs grouped by the node that
+// observed them, which is how IP limits are enforced across a cluster.
+func (c *Client) ClientIPsByNode(ctx context.Context) (*Response, error) {
+	return c.Post(ctx, clientsBase+"clientIpsByGuid")
 }

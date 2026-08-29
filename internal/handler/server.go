@@ -21,26 +21,36 @@ func registerServerTools(s *server.MCPServer, client *xui.Client) {
 	h := &serverHandler{client: client}
 
 	s.AddTool(mcp.NewTool("server_status",
+		readsPanel,
 		mcp.WithDescription("Get current server resource usage: CPU, memory, disk, swap, network throughput, uptime, Xray version and state."),
 	), h.status)
 
 	s.AddTool(mcp.NewTool("restart_xray",
+		interruptsService,
 		mcp.WithDescription("Restart the Xray proxy service. Applies any pending configuration changes. All active connections will be briefly interrupted."),
 	), h.restartXray)
 
 	s.AddTool(mcp.NewTool("stop_xray",
+		interruptsService,
 		mcp.WithDescription("Stop the Xray proxy service. All proxy connections will be terminated until the service is restarted."),
 	), h.stopXray)
 
 	s.AddTool(mcp.NewTool("get_xray_config",
-		mcp.WithDescription("Get the current active Xray JSON configuration. Shows inbounds, outbounds, routing rules, and other Xray settings."),
+		readsPanel,
+		mcp.WithDescription("Summarize the Xray configuration the core is running: how many inbounds, outbounds, routing rules and DNS servers it has, plus a link to the full JSON at xui://xray/config. Pass full=true to get the whole document inline instead."),
+		mcp.WithBoolean("full",
+			mcp.Description("Return the entire configuration inline instead of a summary and a link"),
+			mcp.DefaultBool(false),
+		),
 	), h.getXrayConfig)
 
 	s.AddTool(mcp.NewTool("get_xray_versions",
+		probesRemote,
 		mcp.WithDescription("Get a list of available Xray versions that can be installed."),
 	), h.getXrayVersions)
 
 	s.AddTool(mcp.NewTool("install_xray",
+		installsRemote,
 		mcp.WithDescription("Install or switch to a specific Xray version."),
 		mcp.WithString("version",
 			mcp.Required(),
@@ -49,6 +59,7 @@ func registerServerTools(s *server.MCPServer, client *xui.Client) {
 	), h.installXray)
 
 	s.AddTool(mcp.NewTool("get_logs",
+		readsPanel,
 		mcp.WithDescription("Get application logs from the 3x-ui panel."),
 		mcp.WithNumber("count",
 			mcp.Description("Number of log lines to retrieve"),
@@ -60,6 +71,7 @@ func registerServerTools(s *server.MCPServer, client *xui.Client) {
 	), h.getLogs)
 
 	s.AddTool(mcp.NewTool("get_xray_logs",
+		readsPanel,
 		mcp.WithDescription("Get Xray proxy access/error logs with optional filtering."),
 		mcp.WithNumber("count",
 			mcp.Description("Number of log lines to retrieve"),
@@ -71,20 +83,24 @@ func registerServerTools(s *server.MCPServer, client *xui.Client) {
 	), h.getXrayLogs)
 
 	s.AddTool(mcp.NewTool("get_settings",
+		readsPanel,
 		mcp.WithDescription("Get all 3x-ui panel settings: web server config, Telegram bot, subscription, security, and more."),
 	), h.getSettings)
 
 	s.AddTool(mcp.NewTool("get_default_xray_config",
+		readsPanel,
 		mcp.WithDescription("Get the default Xray configuration template used by the panel."),
 	), h.getDefaultXrayConfig)
 
 	s.AddTool(mcp.NewTool("restart_panel",
+		interruptsService,
 		mcp.WithDescription("Restart the 3x-ui panel itself. The panel will be unavailable for a few seconds during restart."),
 	), h.restartPanel)
 
 	// --- Key material & Reality targets ---
 
 	s.AddTool(mcp.NewTool("generate_key",
+		readsPanel,
 		mcp.WithDescription("Generate key material with the panel's own generators — use this instead of inventing values when building an inbound. Types:\n"+
 			"- 'uuid': a UUID v4 for a client id\n"+
 			"- 'x25519': X25519 keypair for Reality (privateKey goes into the inbound, publicKey into client links)\n"+
@@ -99,6 +115,7 @@ func registerServerTools(s *server.MCPServer, client *xui.Client) {
 	), h.generateKey)
 
 	s.AddTool(mcp.NewTool("scan_reality_target",
+		probesRemote,
 		mcp.WithDescription("Probe one candidate REALITY target over live TLS and report whether it is usable: TLS 1.3, HTTP/2, X25519 and a trusted certificate, plus the certificate's SAN DNS names (candidates for serverNames)."),
 		mcp.WithString("target",
 			mcp.Required(),
@@ -110,6 +127,7 @@ func registerServerTools(s *server.MCPServer, client *xui.Client) {
 	), h.scanRealityTarget)
 
 	s.AddTool(mcp.NewTool("scan_reality_targets",
+		probesRemote,
 		mcp.WithDescription("Probe several REALITY candidates at once and get them ranked by feasibility, then latency. Each comma-separated token may be a domain (checked with SNI), a bare IP, or a CIDR range to discover by reading the certificates it serves."),
 		mcp.WithString("targets",
 			mcp.Required(),
@@ -131,7 +149,16 @@ func (h *serverHandler) stopXray(ctx context.Context, req mcp.CallToolRequest) (
 }
 
 func (h *serverHandler) getXrayConfig(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	return toResult(h.client.GetXrayConfig(ctx))
+	resp, err := h.client.GetXrayConfig(ctx)
+	if req.GetBool("full", false) {
+		return toResult(resp, err)
+	}
+	return linkedResult(resp, err, mcp.NewResourceLink(
+		xrayConfigURI,
+		"Running Xray configuration",
+		"The full config the core is running. Read it to inspect inbounds, outbounds, routing or DNS in detail.",
+		"application/json",
+	), summarizeXrayConfig)
 }
 
 func (h *serverHandler) getXrayVersions(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {

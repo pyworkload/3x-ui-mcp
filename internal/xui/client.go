@@ -37,6 +37,7 @@ type Client struct {
 	apiToken string
 	http     *http.Client
 	logger   *slog.Logger
+	cfgErr   error // non-nil when the config never validated; every call fails with it
 
 	mu        sync.Mutex
 	loggedIn  bool
@@ -62,6 +63,7 @@ func NewClient(cfg *config.Config, logger *slog.Logger) *Client {
 		apiToken: cfg.APIToken,
 		http:     httpClient,
 		logger:   logger,
+		cfgErr:   cfg.Err(),
 	}
 }
 
@@ -210,6 +212,12 @@ func (c *Client) reAuth(ctx context.Context) error {
 
 // do performs an HTTP request with automatic auth and retry on session/CSRF expiry.
 func (c *Client) do(ctx context.Context, method, path, contentType string, body []byte) (*Response, error) {
+	// The server starts on an incomplete configuration so its tools stay
+	// listable; a call that needs the panel is where that stops being viable.
+	if c.cfgErr != nil {
+		return nil, c.cfgErr
+	}
+
 	// Session mode (no token): log in up front. In token mode we rely on the
 	// Bearer header for /panel/api/* and only log in lazily if a route needs it.
 	if c.apiToken == "" {
@@ -399,6 +407,12 @@ func (c *Client) PostJSON(ctx context.Context, path string, data any) (*Response
 // PostForm performs an authenticated POST with form-encoded body.
 func (c *Client) PostForm(ctx context.Context, path string, data url.Values) (*Response, error) {
 	return c.do(ctx, http.MethodPost, path, "application/x-www-form-urlencoded", []byte(data.Encode()))
+}
+
+// Delete performs an authenticated DELETE. The panel uses it for the HWID
+// device routes, which carry everything they need in the path.
+func (c *Client) Delete(ctx context.Context, path string) (*Response, error) {
+	return c.do(ctx, http.MethodDelete, path, "", nil)
 }
 
 // Post performs an authenticated POST with no body.

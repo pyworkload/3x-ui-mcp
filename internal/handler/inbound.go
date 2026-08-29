@@ -20,10 +20,12 @@ func registerInboundTools(s *server.MCPServer, client *xui.Client) {
 	h := &inboundHandler{client: client}
 
 	s.AddTool(mcp.NewTool("list_inbounds",
+		readsPanel,
 		mcp.WithDescription("List all inbound connections configured in the 3x-ui panel. Returns array of inbounds with their ports, protocols, remarks, traffic stats, and client statistics."),
 	), h.list)
 
 	s.AddTool(mcp.NewTool("get_inbound",
+		readsPanel,
 		mcp.WithDescription("Get detailed information about a specific inbound by its ID. Includes protocol settings, stream settings, sniffing config, and per-client stats."),
 		mcp.WithNumber("id",
 			mcp.Required(),
@@ -32,7 +34,8 @@ func registerInboundTools(s *server.MCPServer, client *xui.Client) {
 	), h.get)
 
 	s.AddTool(mcp.NewTool("create_inbound",
-		mcp.WithDescription("Create a new inbound connection. The 'settings', 'stream_settings', and 'sniffing' parameters are JSON strings matching 3x-ui format. Example settings for VLESS: {\"clients\":[{\"id\":\"uuid\",\"flow\":\"xtls-rprx-vision\",\"email\":\"user1\",\"limitIp\":0,\"totalGB\":0,\"expiryTime\":0,\"enable\":true,\"tgId\":\"\",\"subId\":\"\"}],\"decryption\":\"none\",\"fallbacks\":[]}"),
+		writesPanel,
+		mcp.WithDescription("Create a new inbound connection. The 'settings', 'stream_settings' and 'sniffing' parameters are JSON strings in 3x-ui format; read the xui://docs/inbound-settings resource for a worked example per protocol and transport."),
 		mcp.WithString("remark",
 			mcp.Required(),
 			mcp.Description("Display name for the inbound"),
@@ -76,6 +79,7 @@ func registerInboundTools(s *server.MCPServer, client *xui.Client) {
 	), h.create)
 
 	s.AddTool(mcp.NewTool("update_inbound",
+		updatesPanel,
 		mcp.WithDescription("Update an existing inbound. Pass only the fields you want to change — unspecified fields are preserved (read-modify-write against the current inbound). "+
 			"Accepted fields: remark, port, protocol, listen, enable, settings, stream_settings (aka streamSettings), sniffing, expiry_time (aka expiryTime), total, tag. "+
 			"snake_case and camelCase names are both accepted. "+
@@ -91,6 +95,7 @@ func registerInboundTools(s *server.MCPServer, client *xui.Client) {
 	), h.update)
 
 	s.AddTool(mcp.NewTool("delete_inbound",
+		destroysPanel,
 		mcp.WithDescription("Permanently delete an inbound and all its associated client data. This action cannot be undone."),
 		mcp.WithNumber("id",
 			mcp.Required(),
@@ -99,6 +104,7 @@ func registerInboundTools(s *server.MCPServer, client *xui.Client) {
 	), h.delete)
 
 	s.AddTool(mcp.NewTool("set_inbound_enable",
+		updatesPanel,
 		mcp.WithDescription("Enable or disable an inbound. Touches only the enable flag — preferred over update_inbound for a simple on/off, since it never rewrites the settings JSON."),
 		mcp.WithNumber("id",
 			mcp.Required(),
@@ -111,6 +117,7 @@ func registerInboundTools(s *server.MCPServer, client *xui.Client) {
 	), h.setEnable)
 
 	s.AddTool(mcp.NewTool("reset_inbound_traffic",
+		destroysPanel,
 		mcp.WithDescription("Zero the upload/download counters of a single inbound. Per-client counters are left untouched — use reset_client_traffic or bulk_reset_traffic for those."),
 		mcp.WithNumber("id",
 			mcp.Required(),
@@ -119,6 +126,7 @@ func registerInboundTools(s *server.MCPServer, client *xui.Client) {
 	), h.resetTraffic)
 
 	s.AddTool(mcp.NewTool("delete_all_inbound_clients",
+		destroysPanel,
 		mcp.WithDescription("Remove every client attached to one inbound, keeping the inbound itself. Clients attached to other inbounds as well are deleted panel-wide, since clients are email-keyed entities. Cannot be undone."),
 		mcp.WithNumber("id",
 			mcp.Required(),
@@ -127,6 +135,7 @@ func registerInboundTools(s *server.MCPServer, client *xui.Client) {
 	), h.deleteAllClients)
 
 	s.AddTool(mcp.NewTool("bulk_delete_inbounds",
+		destroysPanel,
 		mcp.WithDescription("Delete several inbounds in one call. The panel processes them sequentially, reports failures per id while the rest still proceed, and restarts Xray at most once. Cannot be undone."),
 		mcp.WithString("ids",
 			mcp.Required(),
@@ -135,8 +144,59 @@ func registerInboundTools(s *server.MCPServer, client *xui.Client) {
 	), h.bulkDelete)
 
 	s.AddTool(mcp.NewTool("get_all_inbound_links",
-		mcp.WithDescription("Get the connection URLs (vless://, vmess://, trojan://, ss://, ...) for every client across every inbound, rendered through the panel's subscription engine with the configured remark template."),
+		readsPanel,
+		mcp.WithDescription("Count the connection URLs (vless://, vmess://, trojan://, ss://, ...) for every client across every inbound and link to the full list at xui://inbounds/links. The URLs carry client credentials, so they stay behind the link unless full=true is passed."),
+		mcp.WithBoolean("full",
+			mcp.Description("Return every connection URL inline instead of a count and a link"),
+			mcp.DefaultBool(false),
+		),
 	), h.allLinks)
+
+	s.AddTool(mcp.NewTool("list_inbounds_slim",
+		readsPanel,
+		mcp.WithDescription("List inbounds with each client array stripped to email, enable and comment, and no UUID or subId enrichment. The cheap call for a panel with many clients — use list_inbounds when the credentials themselves are needed."),
+	), h.listSlim)
+
+	s.AddTool(mcp.NewTool("get_inbound_options",
+		readsPanel,
+		mcp.WithDescription("Picker projection of the inbounds: id, remark, tag, protocol, port and the server-computed capability flags (such as whether an inbound can carry XTLS flow). Cheaper than list_inbounds when only choosing one."),
+	), h.options)
+
+	s.AddTool(mcp.NewTool("get_inbound_fallbacks",
+		readsPanel,
+		mcp.WithDescription("List the fallback rules on a master VLESS/Trojan TCP-TLS inbound. Each rule routes traffic that matched no client to a child inbound, keyed by SNI, ALPN, path or dest."),
+		mcp.WithNumber("id",
+			mcp.Required(),
+			mcp.Description("Master inbound ID"),
+		),
+	), h.getFallbacks)
+
+	s.AddTool(mcp.NewTool("set_inbound_fallbacks",
+		destroysPanel,
+		mcp.WithDescription("Replace the whole fallback list of a master inbound and restart Xray. This is not read-modify-write: whatever is passed becomes the complete set, so read get_inbound_fallbacks first and send the full list back with your change."),
+		mcp.WithNumber("id",
+			mcp.Required(),
+			mcp.Description("Master inbound ID"),
+		),
+		mcp.WithString("fallbacks",
+			mcp.Required(),
+			mcp.Description(`JSON array of fallback rules, e.g. [{"childId":11,"path":"/vlws","xver":2},{"childId":12,"alpn":"h2"}]. Pass [] to remove every fallback.`),
+		),
+	), h.setFallbacks)
+
+	s.AddTool(mcp.NewTool("set_inbound_sub_sort_index",
+		updatesPanel,
+		mcp.WithDescription("Set an inbound's position in subscription output without touching anything else. Reads the stored inbound first, so reordering cannot revive a stale client list."),
+		mcp.WithNumber("id",
+			mcp.Required(),
+			mcp.Description("Inbound ID"),
+		),
+		mcp.WithNumber("index",
+			mcp.Required(),
+			mcp.Description("Sort position; lower sorts first"),
+		),
+	), h.setSubSortIndex)
+
 }
 
 func (h *inboundHandler) list(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -395,5 +455,58 @@ func parseInboundIDs(raw string) ([]int, error) {
 }
 
 func (h *inboundHandler) allLinks(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	return toResult(h.client.GetAllInboundLinks(ctx))
+	resp, err := h.client.GetAllInboundLinks(ctx)
+	if req.GetBool("full", false) {
+		return toResult(resp, err)
+	}
+	return linkedResult(resp, err, mcp.NewResourceLink(
+		inboundLinksURI,
+		"Connection links",
+		"Every client's connection URL. Read it when the links themselves are needed, e.g. to hand one to a user.",
+		"application/json",
+	), summarizeLinks)
+}
+
+func (h *inboundHandler) listSlim(ctx context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return toResult(h.client.ListInboundsSlim(ctx))
+}
+
+func (h *inboundHandler) options(ctx context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return toResult(h.client.InboundOptions(ctx))
+}
+
+func (h *inboundHandler) getFallbacks(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	id, err := req.RequireFloat("id")
+	if err != nil {
+		return mcp.NewToolResultError("id is required"), nil
+	}
+	return toResult(h.client.GetInboundFallbacks(ctx, int(id)))
+}
+
+func (h *inboundHandler) setFallbacks(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	id, err := req.RequireFloat("id")
+	if err != nil {
+		return mcp.NewToolResultError("id is required"), nil
+	}
+	raw, err := req.RequireString("fallbacks")
+	if err != nil {
+		return mcp.NewToolResultError("fallbacks is required"), nil
+	}
+	var rules []map[string]any
+	if err := json.Unmarshal([]byte(raw), &rules); err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("fallbacks must be a JSON array: %v", err)), nil
+	}
+	return toResult(h.client.SetInboundFallbacks(ctx, int(id), rules))
+}
+
+func (h *inboundHandler) setSubSortIndex(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	id, err := req.RequireFloat("id")
+	if err != nil {
+		return mcp.NewToolResultError("id is required"), nil
+	}
+	index, err := req.RequireFloat("index")
+	if err != nil {
+		return mcp.NewToolResultError("index is required"), nil
+	}
+	return toResult(h.client.SetInboundSubSortIndex(ctx, int(id), int(index)))
 }
