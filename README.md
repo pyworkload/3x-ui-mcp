@@ -8,10 +8,11 @@ MCP (Model Context Protocol) server for [3x-ui](https://github.com/MHSanaei/3x-u
 
 ## Features
 
-- 65 MCP tools covering the full 3x-ui API (3x-ui v3.3.0+ — see [Panel versions](#panel-versions))
+- 65 MCP tools for inbounds, clients, routing, balancers and the Xray service (3x-ui v3.3.0+ — see [Panel versions](#panel-versions))
 - Two auth modes: session login with CSRF, or a Bearer API token (`XUI_API_TOKEN`)
 - Automatic session management with transparent re-authentication and CSRF refresh
 - Email-keyed client model: attach/detach across inbounds, bulk operations, paged listing
+- Annotated tools: a client can tell a read-only call from a destructive one before running it
 - Stdio transport for seamless LLM integration
 - Zero external dependencies beyond the MCP SDK
 
@@ -77,7 +78,16 @@ Download from [Releases](https://github.com/pyworkload/3x-ui-mcp/releases), then
 - **Bearer API token** (`XUI_API_TOKEN`): the token is sent on every request and
   the panel accepts it for `/panel/api/*` routes without CSRF — on v3.3.0+ that
   covers every tool here, settings and Xray templates included.
-  Create a token in the panel under **Settings → API Tokens**.
+  Create a token in the panel under **Settings → Security → API Token**.
+
+  Since **v3.7.0** tokens are scoped and may carry an expiry, so give this server the
+  **`admin`** scope. The other two do not fit it: `monitor` is a short allowlist of
+  status and metrics routes (of the tools here only `server_status` and
+  `get_xray_versions` fall inside it), and `node-sync` is a fixed allowlist for
+  panel-to-node traffic. The plaintext token is shown once at creation — the panel
+  keeps a SHA-256 hash. Also note that `x-ui setting -getApiToken` on the CLI now
+  *rotates* a single shared `cli-fallback` token instead of minting a new one, so
+  running it again invalidates a token you handed out earlier.
 
 ## Panel versions
 
@@ -99,7 +109,18 @@ version listed:
 | `get_balancers`, `set_balancer_override`, `test_route` | v3.3.1 |
 | `scan_reality_target`, `scan_reality_targets`, `get_all_inbound_links` | v3.4.2 |
 
+Tested against **v3.7.0**, the current panel release. v3.5.0 through v3.7.0 kept
+every route this server calls, so the tools below work unchanged. Those releases
+also grew API surface that is not wrapped here yet: nodes, host groups, client
+groups, scoped API tokens, geodata browsing, HWID devices, and the metrics and
+observatory history endpoints.
+
 ## MCP Tools
+
+Every tool is annotated with its effect on the panel — read-only, additive,
+destructive, or service-interrupting — and with whether it reaches a host outside
+the panel. MCP clients use those hints to auto-approve safe calls and to ask
+before the rest.
 
 ### Inbound Management (10 tools)
 
