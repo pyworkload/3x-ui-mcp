@@ -8,7 +8,7 @@ MCP (Model Context Protocol) server for [3x-ui](https://github.com/MHSanaei/3x-u
 
 ## Features
 
-- 96 MCP tools for inbounds, clients, groups, routing, balancers, geodata, metrics and the Xray service (3x-ui v3.3.0+ — see [Panel versions](#panel-versions))
+- 124 MCP tools for inbounds, clients, groups, hosts, routing, balancers, geodata, metrics, API tokens and the Xray service (3x-ui v3.3.0+ — see [Panel versions](#panel-versions))
 - Two auth modes: session login with CSRF, or a Bearer API token (`XUI_API_TOKEN`)
 - Automatic session management with transparent re-authentication and CSRF refresh
 - Email-keyed client model: attach/detach across inbounds, bulk operations, paged listing
@@ -92,11 +92,12 @@ Download from [Releases](https://github.com/pyworkload/3x-ui-mcp/releases), then
   *rotates* a single shared `cli-fallback` token instead of minting a new one, so
   running it again invalidates a token you handed out earlier.
 
-**Narrowing the toolset:** all 96 tool schemas together occupy roughly 14k tokens
+**Narrowing the toolset:** all 124 tool schemas together occupy roughly 20k tokens
 of model context in every session. `XUI_TOOLSETS` loads only the groups you need
-— `inbounds`, `clients`, `server`, `xray`, `metrics`, `groups`, `geodata`, or
-`all`. `XUI_TOOLSETS=clients,metrics` leaves 35 tools at about 5.5k tokens. An
-unknown name fails at startup rather than silently loading nothing.
+— `inbounds`, `clients`, `server`, `xray`, `metrics`, `groups`, `geodata`,
+`hosts`, `tokens`, `providers`, or `all`. `XUI_TOOLSETS=clients,metrics` leaves
+35 tools at about 5.5k tokens. An unknown name fails at startup rather than
+silently loading nothing.
 
 ## Panel versions
 
@@ -118,7 +119,9 @@ version listed:
 | `get_balancers`, `set_balancer_override`, `test_route` | v3.3.1 |
 | `scan_reality_target`, `scan_reality_targets`, `get_all_inbound_links` | v3.4.2 |
 | Observability, client groups, bulk client state, inbound projections and fallbacks | v3.5.0 |
+| Host groups, API tokens, client export/import, external links, Warp and NordVPN | v3.5.0 |
 | Geodata, HWID devices, `get_clients_by_telegram_id`, `set_inbound_sub_sort_index` | v3.7.0 |
+| Subscription balancers, PIA, and token `scope`/`expires_at` | v3.7.0 |
 
 The last two rows are bounded by the panel's own generated `openapi.json`, which
 only starts at v3.5.0 — some of those routes may predate it.
@@ -155,7 +158,7 @@ before the rest.
 | `set_inbound_fallbacks` | Replace the whole fallback list (restarts Xray) |
 | `set_inbound_sub_sort_index` | Set an inbound's position in subscription output |
 
-### Client Management (29 tools)
+### Client Management (32 tools)
 
 Clients are email-keyed entities that can be attached to several inbounds at once.
 
@@ -190,6 +193,9 @@ Clients are email-keyed entities that can be attached to several inbounds at onc
 | `bulk_disable_clients` | Disable many clients, one rewrite per owning inbound |
 | `bulk_adjust_clients` | Shift expiry and quota for many clients — the bulk renewal |
 | `delete_orphan_clients` | Delete clients attached to no inbound, with their records |
+| `export_clients` | Counts the clients and links to the full export (`full=true` inlines it) |
+| `import_clients` | Create clients from an exported array; existing emails are skipped |
+| `set_client_external_links` | Replace a client's external links and subscriptions |
 
 ### Server Management (14 tools)
 
@@ -234,6 +240,71 @@ Clients are email-keyed entities that can be attached to several inbounds at onc
 | `refresh_outbound_sub` | Re-fetch a subscription now and return its outbounds |
 | `move_outbound_sub` | Move a subscription up/down in priority |
 | `delete_outbound_sub` | Delete an outbound subscription |
+
+### Host Groups (11 tools)
+
+A host group publishes one or more inbounds under external addresses — a CDN
+hostname, a second port, a different SNI — and the panel renders subscription
+links against them. Groups are addressed by a string `group_id`.
+
+| Tool | Description |
+|---|---|
+| `list_hosts` | Every host group across all inbounds |
+| `get_host_group` | One group by its ID |
+| `get_inbound_hosts` | The groups attached to one inbound |
+| `list_host_tags` | Distinct tags used across the groups |
+| `add_host_group` | Create a group over a set of inbounds |
+| `update_host_group` | Update a group, keeping the fields you omit |
+| `delete_host_group` | Delete a group and its hosts |
+| `set_host_group_enable` | Enable or disable one group |
+| `reorder_host_groups` | Set the order groups appear in |
+| `bulk_delete_host_groups` | Delete several groups at once |
+| `bulk_set_host_groups_enable` | Flip several groups at once |
+
+`add_host_group` and `update_host_group` expose the fields a group is normally
+built from; `raw_json` sends a complete HostGroup for the rest (mux, sockopt,
+ECH, final mask).
+
+### Subscription Balancers (4 tools)
+
+Client-side balancers: each appears in the JSON subscription of every client on
+one of its inbounds, and the client app picks a server by the strategy. Not to
+be confused with `get_balancers`, which reports the routing balancers running
+inside Xray.
+
+| Tool | Description |
+|---|---|
+| `list_sub_balancers` | Every subscription balancer in sort order |
+| `create_sub_balancer` | Add one over a set of inbounds |
+| `update_sub_balancer` | Update one, keeping the fields you omit |
+| `delete_sub_balancer` | Remove one |
+
+### API Tokens (4 tools)
+
+| Tool | Description |
+|---|---|
+| `list_api_tokens` | Token metadata; the values themselves are never returned |
+| `create_api_token` | Mint a scoped token — the plaintext is shown only once |
+| `set_api_token_enabled` | Disable or re-enable a token without deleting it |
+| `delete_api_token` | Delete a token permanently |
+
+`delete_api_token` and `set_api_token_enabled` take the token's stored `scope`;
+the panel fails closed unless it matches, so a token cannot be flipped by
+guessing its ID.
+
+### Outbound Providers (6 tools)
+
+Cloudflare Warp, NordVPN and PIA each get a read tool and a write tool, so
+querying a country list is annotated differently from erasing credentials.
+
+| Tool | Description |
+|---|---|
+| `get_warp_data` | Warp account state or the stored WireGuard config |
+| `manage_warp` | Register, rotate the IP, apply a license, set rotation, or erase |
+| `get_nordvpn_data` | Countries, servers in a country, or the stored account |
+| `manage_nordvpn` | Register with a token, set a key, or erase |
+| `get_pia_data` | Regions, servers in a region, or the stored account |
+| `manage_pia` | Log in, register a key against a server, or erase |
 
 ### Client Groups (8 tools)
 
@@ -291,6 +362,7 @@ is ~9k characters, and its summary is under 500.
 | `xui://xray/template` | The saved template: routing, balancers, outbounds, DNS |
 | `xui://inbounds` | Every inbound with settings and per-client stats |
 | `xui://inbounds/links` | Connection URLs for every client |
+| `xui://clients/export` | Every client as `{client, inboundIds}`, credentials included |
 | `xui://inbound/{id}` | One inbound by numeric ID |
 | `xui://client/{email}` | One client record by email |
 
