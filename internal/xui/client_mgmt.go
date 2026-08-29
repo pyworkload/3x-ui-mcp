@@ -230,3 +230,41 @@ func (c *Client) SetClientExternalLinks(ctx context.Context, email string, links
 		"externalLinks": links,
 	})
 }
+
+// --- Cluster-wide client views and bulk attachment ---
+
+// BulkAttachClients attaches many existing clients to many inbounds at once.
+// Each client keeps its identity and its shared traffic row.
+func (c *Client) BulkAttachClients(ctx context.Context, emails []string, inboundIDs []int) (*Response, error) {
+	return c.PostJSON(ctx, clientsBase+"bulkAttach", map[string]any{
+		"emails":     emails,
+		"inboundIds": inboundIDs,
+	})
+}
+
+// BulkDetachClients is the mirror of BulkAttachClients: it removes the listed
+// clients from the listed inbounds without deleting them.
+func (c *Client) BulkDetachClients(ctx context.Context, emails []string, inboundIDs []int) (*Response, error) {
+	return c.PostJSON(ctx, clientsBase+"bulkDetach", map[string]any{
+		"emails":     emails,
+		"inboundIds": inboundIDs,
+	})
+}
+
+// ActiveInbounds returns the inbound tags that carried traffic in the last
+// heartbeat window, grouped by the panelGuid of the node hosting them.
+func (c *Client) ActiveInbounds(ctx context.Context) (*Response, error) {
+	return c.Post(ctx, clientsBase+"activeInbounds")
+}
+
+// OnlinesByNode returns online client emails grouped by the panelGuid of the
+// node each client is physically connected to.
+func (c *Client) OnlinesByNode(ctx context.Context) (*Response, error) {
+	return c.Post(ctx, clientsBase+"onlinesByGuid")
+}
+
+// ClientIPsByNode returns per-client source IPs grouped by the node that
+// observed them, which is how IP limits are enforced across a cluster.
+func (c *Client) ClientIPsByNode(ctx context.Context) (*Response, error) {
+	return c.Post(ctx, clientsBase+"clientIpsByGuid")
+}

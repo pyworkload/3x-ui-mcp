@@ -297,6 +297,23 @@ Example: {"type":"field","outboundTag":"direct","domain":["geosite:category-ru"]
 			mcp.Description("Subscription ID"),
 		),
 	), h.deleteOutboundSub)
+
+	s.AddTool(mcp.NewTool("test_outbounds",
+		probesRemote,
+		mcp.WithDescription("Probe a batch of outbounds (max 50) through one shared temporary Xray instance and get results in input order — far cheaper than calling test_outbound per tag when checking a whole subscription."),
+		mcp.WithString("outbounds",
+			mcp.Required(),
+			mcp.Description("JSON array of outbound configs to test, as returned by get_outbounds"),
+		),
+		mcp.WithString("all_outbounds",
+			mcp.Description("JSON array of every outbound, used to resolve sockopt.dialerProxy chains referenced by the tested ones"),
+		),
+		mcp.WithString("mode",
+			mcp.Description("Probe depth: 'tcp' dials only, 'real' measures a cold full request, otherwise a real HTTP request is routed through each outbound"),
+			mcp.Enum("tcp", "real"),
+		),
+	), h.testOutbounds)
+
 }
 
 // --- Template helpers ---
@@ -906,4 +923,19 @@ func (h *xrayHandler) deleteOutboundSub(ctx context.Context, req mcp.CallToolReq
 		return mcp.NewToolResultError("id is required"), nil
 	}
 	return toResult(h.client.DeleteOutboundSub(ctx, int(id)))
+}
+
+func (h *xrayHandler) testOutbounds(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	outbounds, err := req.RequireString("outbounds")
+	if err != nil {
+		return mcp.NewToolResultError("outbounds is required"), nil
+	}
+	if !json.Valid([]byte(outbounds)) {
+		return mcp.NewToolResultError("outbounds must be a JSON array of outbound configs"), nil
+	}
+	return toResult(h.client.TestOutbounds(ctx,
+		outbounds,
+		req.GetString("all_outbounds", ""),
+		req.GetString("mode", ""),
+	))
 }

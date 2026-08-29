@@ -650,3 +650,104 @@ func TestImportClients_SendsDataAsAString(t *testing.T) {
 		t.Errorf("data = %#v, want the export as a string", body["data"])
 	}
 }
+
+// --- Maintenance, cluster views and batch outbound testing ---
+
+// The geo file route takes its argument in the path, and the no-argument form
+// refreshes the default set — two different URLs, not one with an empty segment.
+func TestUpdateGeofile_PathDependsOnFileName(t *testing.T) {
+	client, rec := recordingClient(t)
+
+	if _, err := client.UpdateGeofile(context.Background(), ""); err != nil {
+		t.Fatalf("UpdateGeofile returned error: %v", err)
+	}
+	if rec.path != "/panel/api/server/updateGeofile" {
+		t.Errorf("default path = %q, want %q", rec.path, "/panel/api/server/updateGeofile")
+	}
+
+	if _, err := client.UpdateGeofile(context.Background(), "geosite.dat"); err != nil {
+		t.Fatalf("UpdateGeofile returned error: %v", err)
+	}
+	if rec.path != "/panel/api/server/updateGeofile/geosite.dat" {
+		t.Errorf("named path = %q, want %q", rec.path, "/panel/api/server/updateGeofile/geosite.dat")
+	}
+}
+
+func TestCertHash_SendsBothFieldsAsForm(t *testing.T) {
+	client, rec := recordingClient(t)
+
+	if _, err := client.CertHash(context.Background(), "/root/cert/fullchain.pem", ""); err != nil {
+		t.Fatalf("CertHash returned error: %v", err)
+	}
+
+	form, err := url.ParseQuery(rec.body)
+	if err != nil {
+		t.Fatalf("body is not a form: %v", err)
+	}
+	if form.Get("certFile") != "/root/cert/fullchain.pem" {
+		t.Errorf("certFile = %q, want the path", form.Get("certFile"))
+	}
+}
+
+// The batch tester takes its outbounds as a JSON string inside a form field,
+// and the optional fields must stay out when unset.
+func TestTestOutbounds_OmitsUnsetOptionalFields(t *testing.T) {
+	client, rec := recordingClient(t)
+
+	if _, err := client.TestOutbounds(context.Background(), `[{"tag":"direct"}]`, "", ""); err != nil {
+		t.Fatalf("TestOutbounds returned error: %v", err)
+	}
+
+	form, err := url.ParseQuery(rec.body)
+	if err != nil {
+		t.Fatalf("body is not a form: %v", err)
+	}
+	if form.Get("outbounds") != `[{"tag":"direct"}]` {
+		t.Errorf("outbounds = %q, want the JSON array", form.Get("outbounds"))
+	}
+	for _, key := range []string{"allOutbounds", "mode"} {
+		if _, present := form[key]; present {
+			t.Errorf("form carries %s = %q, want it omitted", key, form.Get(key))
+		}
+	}
+}
+
+func TestUpdateAdminUser_SendsOldAndNewCredentials(t *testing.T) {
+	client, rec := recordingClient(t)
+
+	if _, err := client.UpdateAdminUser(context.Background(), "admin", "old", "root", "new"); err != nil {
+		t.Fatalf("UpdateAdminUser returned error: %v", err)
+	}
+
+	var body map[string]any
+	if err := json.Unmarshal([]byte(rec.body), &body); err != nil {
+		t.Fatalf("body is not JSON: %v (%s)", err, rec.body)
+	}
+	for key, want := range map[string]string{"oldUsername": "admin", "oldPassword": "old", "newUsername": "root", "newPassword": "new"} {
+		if body[key] != want {
+			t.Errorf("%s = %v, want %q", key, body[key], want)
+		}
+	}
+}
+
+func TestBulkAttachClients_SendsEmailsAndInbounds(t *testing.T) {
+	client, rec := recordingClient(t)
+
+	if _, err := client.BulkAttachClients(context.Background(), []string{"alice", "bob"}, []int{7, 9}); err != nil {
+		t.Fatalf("BulkAttachClients returned error: %v", err)
+	}
+
+	if rec.path != "/panel/api/clients/bulkAttach" {
+		t.Errorf("path = %q, want %q", rec.path, "/panel/api/clients/bulkAttach")
+	}
+	var body struct {
+		Emails     []string `json:"emails"`
+		InboundIds []int    `json:"inboundIds"`
+	}
+	if err := json.Unmarshal([]byte(rec.body), &body); err != nil {
+		t.Fatalf("body is not JSON: %v (%s)", err, rec.body)
+	}
+	if len(body.Emails) != 2 || len(body.InboundIds) != 2 {
+		t.Errorf("body = %+v, want both lists carried through", body)
+	}
+}

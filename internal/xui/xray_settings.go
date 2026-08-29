@@ -189,3 +189,18 @@ func (c *Client) TestRoute(ctx context.Context, req RouteTestRequest) (*Response
 	}
 	return c.PostForm(ctx, "panel/api/xray/routeTest", data)
 }
+
+// TestOutbounds probes a batch of outbounds (max 50) through one shared temp
+// Xray instance, returning results in input order. mode picks the probe depth:
+// "tcp" dials only, "real" measures a cold full request, anything else routes a
+// real HTTP request through each outbound.
+func (c *Client) TestOutbounds(ctx context.Context, outboundsJSON, allOutboundsJSON, mode string) (*Response, error) {
+	form := url.Values{"outbounds": {outboundsJSON}}
+	if allOutboundsJSON != "" {
+		form.Set("allOutbounds", allOutboundsJSON)
+	}
+	if mode != "" {
+		form.Set("mode", mode)
+	}
+	return c.PostForm(ctx, "panel/api/xray/testOutbounds", form)
+}

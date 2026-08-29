@@ -479,6 +479,82 @@ func registerClientTools(s *server.MCPServer, client *xui.Client) {
 		),
 	), h.setExternalLinks)
 
+	s.AddTool(mcp.NewTool("list_clients_paged",
+		readsPanel,
+		mcp.WithDescription("Filter, sort and page through clients on the server instead of pulling the whole list. Rows are slim — no UUID, password or flow — so this is the tool for finding clients on a large panel; use get_client for the credentials of one."),
+		mcp.WithNumber("page",
+			mcp.Description("1-indexed page number"),
+			mcp.DefaultNumber(1),
+		),
+		mcp.WithNumber("page_size",
+			mcp.Description("Rows per page, capped at 200"),
+			mcp.DefaultNumber(25),
+		),
+		mcp.WithString("search",
+			mcp.Description("Case-insensitive match on email, subId or comment"),
+		),
+		mcp.WithString("filter",
+			mcp.Description("Status bucket to restrict to"),
+			mcp.Enum("online", "active", "deactive", "depleted", "expiring"),
+		),
+		mcp.WithString("protocol",
+			mcp.Description("Only clients attached to an inbound of this protocol"),
+		),
+		mcp.WithString("sort",
+			mcp.Description("Sort key"),
+			mcp.Enum("enable", "email", "inboundIds", "traffic", "remaining", "expiryTime"),
+		),
+		mcp.WithString("order",
+			mcp.Description("Sort direction"),
+			mcp.Enum("ascend", "descend"),
+		),
+	), h.listPaged)
+
+	s.AddTool(mcp.NewTool("bulk_attach_clients",
+		updatesPanel,
+		mcp.WithDescription("Attach many existing clients to many inbounds in one call. Each client keeps its email, UUID, subId and its shared traffic row, so the same credentials work on every inbound it is attached to."),
+		mcp.WithArray("emails",
+			mcp.Required(),
+			mcp.Description("Emails of the clients to attach"),
+			mcp.WithStringItems(),
+		),
+		mcp.WithArray("inbound_ids",
+			mcp.Required(),
+			mcp.Description("Inbounds to attach them to"),
+			mcp.WithNumberItems(),
+		),
+	), h.bulkAttach)
+
+	s.AddTool(mcp.NewTool("bulk_detach_clients",
+		destroysPanel,
+		mcp.WithDescription("Detach many clients from many inbounds without deleting them. A client detached from its last inbound keeps existing but is served nowhere — delete_orphan_clients is what removes those."),
+		mcp.WithArray("emails",
+			mcp.Required(),
+			mcp.Description("Emails of the clients to detach"),
+			mcp.WithStringItems(),
+		),
+		mcp.WithArray("inbound_ids",
+			mcp.Required(),
+			mcp.Description("Inbounds to detach them from"),
+			mcp.WithNumberItems(),
+		),
+	), h.bulkDetach)
+
+	s.AddTool(mcp.NewTool("get_active_inbounds",
+		readsPanel,
+		mcp.WithDescription("List the inbound tags that carried traffic in the last heartbeat window, grouped by the node hosting them. Pairs with get_online_clients_by_node to see which node is actually serving what."),
+	), h.activeInbounds)
+
+	s.AddTool(mcp.NewTool("get_online_clients_by_node",
+		readsPanel,
+		mcp.WithDescription("List online client emails grouped by the node each one is connected to. get_online_clients answers the same question for this panel alone; this one attributes them across the cluster."),
+	), h.onlinesByNode)
+
+	s.AddTool(mcp.NewTool("get_client_ips_by_node",
+		readsPanel,
+		mcp.WithDescription("List per-client source IPs grouped by the node that observed them — the cluster-wide view behind per-client IP limits."),
+	), h.clientIPsByNode)
+
 }
 
 func (h *clientHandler) getSubscriptionLinks(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -924,4 +1000,59 @@ func (h *clientHandler) setExternalLinks(ctx context.Context, req mcp.CallToolRe
 		return mcp.NewToolResultError(fmt.Sprintf("links must be a JSON array: %v", err)), nil
 	}
 	return toResult(h.client.SetClientExternalLinks(ctx, email, links))
+}
+
+func (h *clientHandler) listPaged(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	query := url.Values{
+		"page":     {strconv.Itoa(int(req.GetFloat("page", 1)))},
+		"pageSize": {strconv.Itoa(int(req.GetFloat("page_size", 25)))},
+	}
+	for param, key := range map[string]string{
+		"search":   "search",
+		"filter":   "filter",
+		"protocol": "protocol",
+		"sort":     "sort",
+		"order":    "order",
+	} {
+		if v := req.GetString(param, ""); v != "" {
+			query.Set(key, v)
+		}
+	}
+	return toResult(h.client.ListClientsPaged(ctx, query))
+}
+
+func (h *clientHandler) bulkAttach(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	emails := req.GetStringSlice("emails", nil)
+	if len(emails) == 0 {
+		return mcp.NewToolResultError("emails is required (at least one email)"), nil
+	}
+	inboundIDs := req.GetIntSlice("inbound_ids", nil)
+	if len(inboundIDs) == 0 {
+		return mcp.NewToolResultError("inbound_ids is required (at least one inbound)"), nil
+	}
+	return toResult(h.client.BulkAttachClients(ctx, emails, inboundIDs))
+}
+
+func (h *clientHandler) bulkDetach(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	emails := req.GetStringSlice("emails", nil)
+	if len(emails) == 0 {
+		return mcp.NewToolResultError("emails is required (at least one email)"), nil
+	}
+	inboundIDs := req.GetIntSlice("inbound_ids", nil)
+	if len(inboundIDs) == 0 {
+		return mcp.NewToolResultError("inbound_ids is required (at least one inbound)"), nil
+	}
+	return toResult(h.client.BulkDetachClients(ctx, emails, inboundIDs))
+}
+
+func (h *clientHandler) activeInbounds(ctx context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return toResult(h.client.ActiveInbounds(ctx))
+}
+
+func (h *clientHandler) onlinesByNode(ctx context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return toResult(h.client.OnlinesByNode(ctx))
+}
+
+func (h *clientHandler) clientIPsByNode(ctx context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return toResult(h.client.ClientIPsByNode(ctx))
 }

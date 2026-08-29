@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/pyworkload/3x-ui-mcp/internal/config"
@@ -218,5 +219,43 @@ func TestBulkAdjustClients_RejectsEmptyAdjustment(t *testing.T) {
 	}
 	if !res.IsError {
 		t.Error("bulkAdjust accepted an adjustment with nothing to adjust")
+	}
+}
+
+// The paged listing builds a query string, and empty filters must not become
+// empty query keys — the panel treats an empty filter as a real bucket name.
+func TestListClientsPaged_OmitsEmptyFilters(t *testing.T) {
+	var gotQuery string
+
+	h, _ := newClientHandler(t, func(w http.ResponseWriter, r *http.Request) {
+		if writeCSRF(w, r) {
+			return
+		}
+		if r.URL.Path == "/login" {
+			_ = json.NewEncoder(w).Encode(map[string]any{"success": true})
+			return
+		}
+		gotQuery = r.URL.RawQuery
+		_ = json.NewEncoder(w).Encode(map[string]any{"success": true, "obj": map[string]any{"items": []any{}}})
+	})
+
+	res, err := h.listPaged(context.Background(), req(map[string]any{
+		"page_size": float64(50),
+		"sort":      "traffic",
+	}))
+	if err != nil {
+		t.Fatalf("listPaged returned error: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("listPaged reported a tool error: %+v", res.Content)
+	}
+
+	if !strings.Contains(gotQuery, "pageSize=50") || !strings.Contains(gotQuery, "sort=traffic") {
+		t.Errorf("query = %q, want pageSize and sort carried through", gotQuery)
+	}
+	for _, unwanted := range []string{"search=", "filter=", "protocol=", "order="} {
+		if strings.Contains(gotQuery, unwanted) {
+			t.Errorf("query = %q, want %q omitted when unset", gotQuery, unwanted)
+		}
 	}
 }

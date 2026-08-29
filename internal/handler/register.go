@@ -26,6 +26,9 @@ var toolsets = map[string]func(*server.MCPServer, *xui.Client){
 	"hosts":    registerHostTools,
 	"nodes":    registerNodeTools,
 	"tokens":   registerAPITokenTools,
+	// Panel upkeep: health checks, certificate helpers, geo files, panel
+	// updates and the settings probes.
+	"maintenance": registerMaintenanceTools,
 	// The outbound providers reach Warp, NordVPN and PIA rather than the panel,
 	// so they are opt-out separately from the rest of the Xray tooling.
 	"providers": registerProviderTools,
