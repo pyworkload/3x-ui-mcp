@@ -37,7 +37,11 @@ func registerServerTools(s *server.MCPServer, client *xui.Client) {
 
 	s.AddTool(mcp.NewTool("get_xray_config",
 		readsPanel,
-		mcp.WithDescription("Get the current active Xray JSON configuration. Shows inbounds, outbounds, routing rules, and other Xray settings."),
+		mcp.WithDescription("Summarize the Xray configuration the core is running: how many inbounds, outbounds, routing rules and DNS servers it has, plus a link to the full JSON at xui://xray/config. Pass full=true to get the whole document inline instead."),
+		mcp.WithBoolean("full",
+			mcp.Description("Return the entire configuration inline instead of a summary and a link"),
+			mcp.DefaultBool(false),
+		),
 	), h.getXrayConfig)
 
 	s.AddTool(mcp.NewTool("get_xray_versions",
@@ -145,7 +149,16 @@ func (h *serverHandler) stopXray(ctx context.Context, req mcp.CallToolRequest) (
 }
 
 func (h *serverHandler) getXrayConfig(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	return toResult(h.client.GetXrayConfig(ctx))
+	resp, err := h.client.GetXrayConfig(ctx)
+	if req.GetBool("full", false) {
+		return toResult(resp, err)
+	}
+	return linkedResult(resp, err, mcp.NewResourceLink(
+		xrayConfigURI,
+		"Running Xray configuration",
+		"The full config the core is running. Read it to inspect inbounds, outbounds, routing or DNS in detail.",
+		"application/json",
+	), summarizeXrayConfig)
 }
 
 func (h *serverHandler) getXrayVersions(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {

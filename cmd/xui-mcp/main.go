@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/pyworkload/3x-ui-mcp/internal/config"
@@ -44,7 +45,7 @@ func main() {
 	cfg, err := config.Load()
 	if err != nil {
 		logger.Error("configuration error", "error", err)
-		fmt.Fprintf(os.Stderr, "Error: %v\n\nRequired environment variables:\n  XUI_HOST      - Panel URL (e.g. http://localhost:2053)\n  XUI_USERNAME   - Admin username\n  XUI_PASSWORD   - Admin password\n\nOptional:\n  XUI_BASE_PATH  - Panel base path (default: /)\n  XUI_LOG_LEVEL  - Log level: debug, info, warn, error (default: info)\n", err)
+		fmt.Fprintf(os.Stderr, "Error: %v\n\nRequired environment variables:\n  XUI_HOST      - Panel URL (e.g. http://localhost:2053)\n  XUI_USERNAME   - Admin username\n  XUI_PASSWORD   - Admin password\n\nOptional:\n  XUI_BASE_PATH  - Panel base path (default: /)\n  XUI_TOOLSETS   - Comma-separated tool groups to expose (default: all)\n  XUI_LOG_LEVEL  - Log level: debug, info, warn, error (default: info)\n", err)
 		os.Exit(1)
 	}
 
@@ -54,16 +55,26 @@ func main() {
 		"3x-ui",
 		version,
 		server.WithToolCapabilities(true),
+		server.WithResourceCapabilities(false, false),
 		server.WithInstructions(instructions),
 	)
 
-	handler.RegisterAll(s, client)
+	if err := handler.RegisterAll(s, client, cfg.Toolsets); err != nil {
+		logger.Error("toolset selection", "error", err)
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
 
+	enabled := cfg.Toolsets
+	if len(enabled) == 0 {
+		enabled = handler.ToolsetNames()
+	}
 	logger.Info("starting 3x-ui MCP server",
 		"version", version,
 		"commit", commit,
 		"date", date,
 		"host", cfg.Host,
+		"toolsets", strings.Join(enabled, ","),
 	)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)

@@ -23,7 +23,11 @@ func registerXrayTools(s *server.MCPServer, client *xui.Client) {
 
 	s.AddTool(mcp.NewTool("get_xray_template",
 		readsPanel,
-		mcp.WithDescription("Get the full Xray template configuration. This includes routing rules, outbounds, DNS settings, and all other Xray config. The template is merged with auto-generated inbound configs by the panel."),
+		mcp.WithDescription("Summarize the saved Xray template — routing rules, balancers, outbounds and DNS — and link to the full JSON at xui://xray/template. The panel merges this template with the auto-generated inbound configs. Pass full=true to get the whole document inline, which is what update_xray_template expects back."),
+		mcp.WithBoolean("full",
+			mcp.Description("Return the entire template inline instead of a summary and a link"),
+			mcp.DefaultBool(false),
+		),
 	), h.getTemplate)
 
 	s.AddTool(mcp.NewTool("update_xray_template",
@@ -466,12 +470,16 @@ func mergeBalancerStatus(balancers []any, status map[string]any) []any {
 // --- Tool handlers ---
 
 func (h *xrayHandler) getTemplate(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	template, err := h.fetchTemplate(ctx)
-	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+	resp, err := h.client.GetXrayTemplate(ctx)
+	if req.GetBool("full", false) {
+		return toResult(resp, err)
 	}
-	pretty, _ := json.MarshalIndent(template, "", "  ")
-	return mcp.NewToolResultText(string(pretty)), nil
+	return linkedResult(resp, err, mcp.NewResourceLink(
+		xrayTemplateURI,
+		"Xray template",
+		"The saved template in full. Read it before editing, since update_xray_template replaces the whole document.",
+		"application/json",
+	), summarizeXrayConfig)
 }
 
 func (h *xrayHandler) updateTemplate(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {

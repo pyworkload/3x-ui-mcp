@@ -1,18 +1,69 @@
 package handler
 
 import (
+	"fmt"
+	"sort"
+	"strings"
+
 	"github.com/pyworkload/3x-ui-mcp/internal/xui"
 
 	"github.com/mark3labs/mcp-go/server"
 )
 
-// RegisterAll registers all MCP tools on the server.
-func RegisterAll(s *server.MCPServer, client *xui.Client) {
-	registerInboundTools(s, client)
-	registerClientTools(s, client)
-	registerServerTools(s, client)
-	registerXrayTools(s, client)
-	registerMetricsTools(s, client)
-	registerGroupTools(s, client)
-	registerGeodataTools(s, client)
+// toolsets maps a group name to the tools it registers.
+//
+// All 96 tool schemas together cost roughly 14k tokens of context in every
+// session, whether or not the caller ever touches them. XUI_TOOLSETS narrows
+// that: a deployment that only hands out keys can load "clients" and skip the
+// Xray template, geodata and metrics tools entirely.
+var toolsets = map[string]func(*server.MCPServer, *xui.Client){
+	"inbounds": registerInboundTools,
+	"clients":  registerClientTools,
+	"server":   registerServerTools,
+	"xray":     registerXrayTools,
+	"metrics":  registerMetricsTools,
+	"groups":   registerGroupTools,
+	"geodata":  registerGeodataTools,
+}
+
+// ToolsetNames lists the available groups in a stable order.
+func ToolsetNames() []string {
+	names := make([]string, 0, len(toolsets))
+	for name := range toolsets {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// RegisterAll registers the requested tool groups plus the resources, which are
+// always available: they cost one line each in resources/list and are only read
+// when something asks for them. An empty or "all" selection enables every group.
+func RegisterAll(s *server.MCPServer, client *xui.Client, enabled []string) error {
+	registerResources(s, client)
+
+	if len(enabled) == 0 {
+		enabled = ToolsetNames()
+	}
+	for _, name := range enabled {
+		if name == "all" {
+			enabled = ToolsetNames()
+			break
+		}
+	}
+
+	var unknown []string
+	for _, name := range enabled {
+		register, ok := toolsets[name]
+		if !ok {
+			unknown = append(unknown, name)
+			continue
+		}
+		register(s, client)
+	}
+	if len(unknown) > 0 {
+		return fmt.Errorf("unknown toolset(s) %s; available: %s",
+			strings.Join(unknown, ", "), strings.Join(ToolsetNames(), ", "))
+	}
+	return nil
 }

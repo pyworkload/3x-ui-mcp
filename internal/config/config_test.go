@@ -233,3 +233,40 @@ func contains(s, substr string) bool {
 	}
 	return false
 }
+
+func TestLoad_ParsesToolsets(t *testing.T) {
+	t.Setenv("XUI_HOST", "http://localhost:2053")
+	t.Setenv("XUI_USERNAME", "admin")
+	t.Setenv("XUI_PASSWORD", "admin")
+	t.Setenv("XUI_TOOLSETS", " Clients ,, inbounds,")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	want := []string{"clients", "inbounds"}
+	if len(cfg.Toolsets) != len(want) {
+		t.Fatalf("toolsets = %v, want %v", cfg.Toolsets, want)
+	}
+	for i, name := range want {
+		if cfg.Toolsets[i] != name {
+			t.Errorf("toolsets[%d] = %q, want %q", i, cfg.Toolsets[i], name)
+		}
+	}
+}
+
+func TestLoad_NoToolsetsMeansEmpty(t *testing.T) {
+	t.Setenv("XUI_HOST", "http://localhost:2053")
+	t.Setenv("XUI_USERNAME", "admin")
+	t.Setenv("XUI_PASSWORD", "admin")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	if len(cfg.Toolsets) != 0 {
+		t.Errorf("toolsets = %v, want empty so every group loads", cfg.Toolsets)
+	}
+}

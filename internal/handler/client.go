@@ -22,7 +22,7 @@ func registerClientTools(s *server.MCPServer, client *xui.Client) {
 
 	s.AddTool(mcp.NewTool("add_client",
 		writesPanel,
-		mcp.WithDescription("Add a new client (user) and attach it to one or more inbounds. In 3x-ui v3.2.8 a client is a first-class, email-keyed entity. A UUID is auto-generated for VMess/VLESS if not provided; for Trojan/Shadowsocks/Hysteria the panel generates the key server-side when omitted."),
+		mcp.WithDescription("Add a new client (user) and attach it to one or more inbounds. Clients are first-class, email-keyed entities. A UUID is auto-generated for VMess/VLESS if not provided; for Trojan/Shadowsocks/Hysteria the panel generates the key server-side when omitted. Field meanings and units: read the xui://docs/client-fields resource."),
 		mcp.WithArray("inbound_ids",
 			mcp.Required(),
 			mcp.Description("IDs of the inbounds to attach this client to (at least one)"),

@@ -13,7 +13,8 @@ type Config struct {
 	BasePath string // Panel base path, e.g. "/" or "/custom/"
 	Username string
 	Password string
-	APIToken string // Optional Bearer API token (3x-ui v3.2.8+). When set, /panel/api/* calls bypass CSRF.
+	APIToken string   // Optional Bearer API token (3x-ui v3.2.8+). When set, /panel/api/* calls bypass CSRF.
+	Toolsets []string // Tool groups to expose; empty means every group.
 }
 
 // Load reads configuration from environment variables and validates it.
@@ -24,6 +25,7 @@ func Load() (*Config, error) {
 		Username: os.Getenv("XUI_USERNAME"),
 		Password: os.Getenv("XUI_PASSWORD"),
 		APIToken: os.Getenv("XUI_API_TOKEN"),
+		Toolsets: splitList(os.Getenv("XUI_TOOLSETS")),
 	}
 
 	if cfg.BasePath == "" {
@@ -71,6 +73,18 @@ func (c *Config) normalize() {
 	if !strings.HasSuffix(c.BasePath, "/") {
 		c.BasePath += "/"
 	}
+}
+
+// splitList parses a comma-separated environment value into trimmed, lowercased
+// entries, dropping empties so "clients, ,inbounds," behaves as expected.
+func splitList(raw string) []string {
+	var out []string
+	for _, part := range strings.Split(raw, ",") {
+		if part = strings.ToLower(strings.TrimSpace(part)); part != "" {
+			out = append(out, part)
+		}
+	}
+	return out
 }
 
 // BaseURL returns the full base URL for API requests.

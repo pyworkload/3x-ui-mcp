@@ -35,7 +35,7 @@ func registerInboundTools(s *server.MCPServer, client *xui.Client) {
 
 	s.AddTool(mcp.NewTool("create_inbound",
 		writesPanel,
-		mcp.WithDescription("Create a new inbound connection. The 'settings', 'stream_settings', and 'sniffing' parameters are JSON strings matching 3x-ui format. Example settings for VLESS: {\"clients\":[{\"id\":\"uuid\",\"flow\":\"xtls-rprx-vision\",\"email\":\"user1\",\"limitIp\":0,\"totalGB\":0,\"expiryTime\":0,\"enable\":true,\"tgId\":\"\",\"subId\":\"\"}],\"decryption\":\"none\",\"fallbacks\":[]}"),
+		mcp.WithDescription("Create a new inbound connection. The 'settings', 'stream_settings' and 'sniffing' parameters are JSON strings in 3x-ui format; read the xui://docs/inbound-settings resource for a worked example per protocol and transport."),
 		mcp.WithString("remark",
 			mcp.Required(),
 			mcp.Description("Display name for the inbound"),
@@ -145,7 +145,11 @@ func registerInboundTools(s *server.MCPServer, client *xui.Client) {
 
 	s.AddTool(mcp.NewTool("get_all_inbound_links",
 		readsPanel,
-		mcp.WithDescription("Get the connection URLs (vless://, vmess://, trojan://, ss://, ...) for every client across every inbound, rendered through the panel's subscription engine with the configured remark template."),
+		mcp.WithDescription("Count the connection URLs (vless://, vmess://, trojan://, ss://, ...) for every client across every inbound and link to the full list at xui://inbounds/links. The URLs carry client credentials, so they stay behind the link unless full=true is passed."),
+		mcp.WithBoolean("full",
+			mcp.Description("Return every connection URL inline instead of a count and a link"),
+			mcp.DefaultBool(false),
+		),
 	), h.allLinks)
 
 	s.AddTool(mcp.NewTool("list_inbounds_slim",
@@ -451,7 +455,16 @@ func parseInboundIDs(raw string) ([]int, error) {
 }
 
 func (h *inboundHandler) allLinks(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	return toResult(h.client.GetAllInboundLinks(ctx))
+	resp, err := h.client.GetAllInboundLinks(ctx)
+	if req.GetBool("full", false) {
+		return toResult(resp, err)
+	}
+	return linkedResult(resp, err, mcp.NewResourceLink(
+		inboundLinksURI,
+		"Connection links",
+		"Every client's connection URL. Read it when the links themselves are needed, e.g. to hand one to a user.",
+		"application/json",
+	), summarizeLinks)
 }
 
 func (h *inboundHandler) listSlim(ctx context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
