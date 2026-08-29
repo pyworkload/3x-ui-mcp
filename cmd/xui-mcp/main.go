@@ -42,11 +42,14 @@ func main() {
 		Level: logLevel(),
 	}))
 
+	// An incomplete configuration is not fatal: the server still starts and
+	// answers tools/list, so a client can inspect it — and a registry crawler
+	// can index it — without a reachable panel. Every panel call then fails
+	// with this same error.
 	cfg, err := config.Load()
 	if err != nil {
-		logger.Error("configuration error", "error", err)
-		fmt.Fprintf(os.Stderr, "Error: %v\n\nRequired environment variables:\n  XUI_HOST      - Panel URL (e.g. http://localhost:2053)\n  XUI_USERNAME   - Admin username\n  XUI_PASSWORD   - Admin password\n\nOptional:\n  XUI_BASE_PATH  - Panel base path (default: /)\n  XUI_TOOLSETS   - Comma-separated tool groups to expose (default: all)\n  XUI_LOG_LEVEL  - Log level: debug, info, warn, error (default: info)\n", err)
-		os.Exit(1)
+		logger.Warn("configuration incomplete; tools are listed but every panel call will fail", "error", err)
+		fmt.Fprintf(os.Stderr, "Warning: %v\n\nRequired environment variables:\n  XUI_HOST      - Panel URL (e.g. http://localhost:2053)\n  XUI_USERNAME   - Admin username\n  XUI_PASSWORD   - Admin password\n\nOptional:\n  XUI_API_TOKEN  - Bearer API token, replaces username/password (3x-ui v3.2.8+)\n  XUI_BASE_PATH  - Panel base path (default: /)\n  XUI_TOOLSETS   - Comma-separated tool groups to expose (default: all)\n  XUI_LOG_LEVEL  - Log level: debug, info, warn, error (default: info)\n", err)
 	}
 
 	client := xui.NewClient(cfg, logger)
