@@ -13,6 +13,8 @@ MCP (Model Context Protocol) server for [3x-ui](https://github.com/MHSanaei/3x-u
 - Automatic session management with transparent re-authentication and CSRF refresh
 - Email-keyed client model: attach/detach across inbounds, bulk operations, paged listing
 - Annotated tools: a client can tell a read-only call from a destructive one before running it
+- Lazy by default: bulky payloads come back as a summary plus a `resource_link`, fetched only if needed
+- `XUI_TOOLSETS` narrows which tool groups load, cutting the context they occupy
 - Stdio transport for seamless LLM integration
 - Zero external dependencies beyond the MCP SDK
 
@@ -65,6 +67,7 @@ Download from [Releases](https://github.com/pyworkload/3x-ui-mcp/releases), then
 | `XUI_USERNAME` | Yes¹ | Admin username | `admin` |
 | `XUI_PASSWORD` | Yes¹ | Admin password | `admin` |
 | `XUI_API_TOKEN` | No | Bearer API token. Bypasses CSRF for `/panel/api/*` | `eyJ…` |
+| `XUI_TOOLSETS` | No | Tool groups to expose (default: all) | `clients,metrics` |
 | `XUI_BASE_PATH` | No | Panel base path (default: `/`) | `/xui/` |
 | `XUI_LOG_LEVEL` | No | Log level (default: `info`) | `debug`, `info`, `warn`, `error` |
 
@@ -88,6 +91,12 @@ Download from [Releases](https://github.com/pyworkload/3x-ui-mcp/releases), then
   keeps a SHA-256 hash. Also note that `x-ui setting -getApiToken` on the CLI now
   *rotates* a single shared `cli-fallback` token instead of minting a new one, so
   running it again invalidates a token you handed out earlier.
+
+**Narrowing the toolset:** all 96 tool schemas together occupy roughly 14k tokens
+of model context in every session. `XUI_TOOLSETS` loads only the groups you need
+— `inbounds`, `clients`, `server`, `xray`, `metrics`, `groups`, `geodata`, or
+`all`. `XUI_TOOLSETS=clients,metrics` leaves 35 tools at about 5.5k tokens. An
+unknown name fails at startup rather than silently loading nothing.
 
 ## Panel versions
 
@@ -139,7 +148,7 @@ before the rest.
 | `reset_inbound_traffic` | Zero one inbound's traffic counters |
 | `delete_all_inbound_clients` | Remove every client from an inbound, keeping the inbound |
 | `bulk_delete_inbounds` | Delete several inbounds in one call |
-| `get_all_inbound_links` | Connection URLs for every client across every inbound |
+| `get_all_inbound_links` | Counts the connection URLs and links to the full list (`full=true` inlines them) |
 | `list_inbounds_slim` | Inbounds with client arrays trimmed — the cheap listing for large panels |
 | `get_inbound_options` | Picker projection: id, remark, tag, protocol, port, capability flags |
 | `get_inbound_fallbacks` | Fallback rules on a master VLESS/Trojan TCP-TLS inbound |
@@ -189,7 +198,7 @@ Clients are email-keyed entities that can be attached to several inbounds at onc
 | `server_status` | Get server system status (CPU, RAM, disk, uptime) |
 | `restart_xray` | Restart Xray service |
 | `stop_xray` | Stop Xray service |
-| `get_xray_config` | Get current Xray runtime configuration |
+| `get_xray_config` | Summarizes the running Xray config and links to the full JSON (`full=true` inlines it) |
 | `get_xray_versions` | List available Xray versions |
 | `install_xray` | Install a specific Xray version |
 | `get_logs` | Get panel service logs |
@@ -205,7 +214,7 @@ Clients are email-keyed entities that can be attached to several inbounds at onc
 
 | Tool | Description |
 |---|---|
-| `get_xray_template` | Get Xray JSON template |
+| `get_xray_template` | Summarizes the template and links to the full JSON (`full=true` inlines it) |
 | `update_xray_template` | Update Xray JSON template |
 | `get_routing_rules` | List all routing rules (and the balancers they reference) |
 | `add_routing_rule` | Add a routing rule |
@@ -265,6 +274,28 @@ the bucket picks the window too: 2 (2m), 30 (30m), 60 (1h), 180 (3h), 360 (6h),
 | `list_geodata_categories` | Categories in one database, with entry counts and attributes |
 | `list_geodata_entries` | The rules inside a category — typed domains or CIDRs |
 | `validate_geodata_tokens` | Report routing tokens that do not resolve, with a reason |
+
+## Resources
+
+Tools spend context on their results whether or not the caller needed all of it.
+Resources are the lazy half: each costs one line in `resources/list` and is read
+only when something asks for the URI. The three bulkiest tools answer with a
+summary plus a `resource_link` to the matching resource — a running Xray config
+is ~9k characters, and its summary is under 500.
+
+| URI | Contents |
+|---|---|
+| `xui://docs/inbound-settings` | The settings, streamSettings and sniffing JSON, with an example per protocol |
+| `xui://docs/client-fields` | What each client field means and the units it uses |
+| `xui://xray/config` | The config the core is running right now |
+| `xui://xray/template` | The saved template: routing, balancers, outbounds, DNS |
+| `xui://inbounds` | Every inbound with settings and per-client stats |
+| `xui://inbounds/links` | Connection URLs for every client |
+| `xui://inbound/{id}` | One inbound by numeric ID |
+| `xui://client/{email}` | One client record by email |
+
+The two `xui://docs/…` resources are static reference text, so reading them
+costs no panel call.
 
 ## Architecture
 
