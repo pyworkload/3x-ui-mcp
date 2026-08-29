@@ -10,6 +10,74 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
+// Tool annotation presets.
+//
+// The hints tell an MCP client what a call does to the panel before it runs:
+// clients auto-approve read-only tools and warn on destructive ones. Every
+// preset also sets openWorldHint, which here separates tools that stay inside
+// the panel from those that reach hosts on the internet.
+var (
+	// readsPanel returns panel state and changes nothing.
+	readsPanel = mcp.WithToolAnnotation(mcp.ToolAnnotation{
+		ReadOnlyHint:  mcp.ToBoolPtr(true),
+		OpenWorldHint: mcp.ToBoolPtr(false),
+	})
+
+	// probesRemote reads only, but reaches a host outside the panel.
+	probesRemote = mcp.WithToolAnnotation(mcp.ToolAnnotation{
+		ReadOnlyHint:  mcp.ToBoolPtr(true),
+		OpenWorldHint: mcp.ToBoolPtr(true),
+	})
+
+	// writesPanel adds to the panel; running it twice adds twice.
+	writesPanel = mcp.WithToolAnnotation(mcp.ToolAnnotation{
+		ReadOnlyHint:    mcp.ToBoolPtr(false),
+		DestructiveHint: mcp.ToBoolPtr(false),
+		IdempotentHint:  mcp.ToBoolPtr(false),
+		OpenWorldHint:   mcp.ToBoolPtr(false),
+	})
+
+	// updatesPanel overwrites fields in place, keeping the rest; repeating is a no-op.
+	updatesPanel = mcp.WithToolAnnotation(mcp.ToolAnnotation{
+		ReadOnlyHint:    mcp.ToBoolPtr(false),
+		DestructiveHint: mcp.ToBoolPtr(false),
+		IdempotentHint:  mcp.ToBoolPtr(true),
+		OpenWorldHint:   mcp.ToBoolPtr(false),
+	})
+
+	// destroysPanel deletes data or zeroes counters; repeating changes nothing further.
+	destroysPanel = mcp.WithToolAnnotation(mcp.ToolAnnotation{
+		ReadOnlyHint:    mcp.ToBoolPtr(false),
+		DestructiveHint: mcp.ToBoolPtr(true),
+		IdempotentHint:  mcp.ToBoolPtr(true),
+		OpenWorldHint:   mcp.ToBoolPtr(false),
+	})
+
+	// interruptsService stops or restarts a running service, dropping live connections.
+	interruptsService = mcp.WithToolAnnotation(mcp.ToolAnnotation{
+		ReadOnlyHint:    mcp.ToBoolPtr(false),
+		DestructiveHint: mcp.ToBoolPtr(true),
+		IdempotentHint:  mcp.ToBoolPtr(false),
+		OpenWorldHint:   mcp.ToBoolPtr(false),
+	})
+
+	// fetchesRemote pulls data from an external URL into the panel.
+	fetchesRemote = mcp.WithToolAnnotation(mcp.ToolAnnotation{
+		ReadOnlyHint:    mcp.ToBoolPtr(false),
+		DestructiveHint: mcp.ToBoolPtr(false),
+		IdempotentHint:  mcp.ToBoolPtr(false),
+		OpenWorldHint:   mcp.ToBoolPtr(true),
+	})
+
+	// installsRemote replaces a running binary with one downloaded from the internet.
+	installsRemote = mcp.WithToolAnnotation(mcp.ToolAnnotation{
+		ReadOnlyHint:    mcp.ToBoolPtr(false),
+		DestructiveHint: mcp.ToBoolPtr(true),
+		IdempotentHint:  mcp.ToBoolPtr(false),
+		OpenWorldHint:   mcp.ToBoolPtr(true),
+	})
+)
+
 // toResult converts an XUI API response into an MCP tool result.
 // API errors (success=false) are returned as tool errors, not Go errors,
 // so the LLM sees the message instead of a transport failure.

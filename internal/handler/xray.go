@@ -22,10 +22,12 @@ func registerXrayTools(s *server.MCPServer, client *xui.Client) {
 	// --- Full template tools ---
 
 	s.AddTool(mcp.NewTool("get_xray_template",
+		readsPanel,
 		mcp.WithDescription("Get the full Xray template configuration. This includes routing rules, outbounds, DNS settings, and all other Xray config. The template is merged with auto-generated inbound configs by the panel."),
 	), h.getTemplate)
 
 	s.AddTool(mcp.NewTool("update_xray_template",
+		destroysPanel,
 		mcp.WithDescription("Replace the entire Xray template configuration. The template is a JSON string containing routing, outbounds, DNS, policy, etc. WARNING: this replaces the whole config — make sure to include all existing sections you want to keep."),
 		mcp.WithString("xray_setting",
 			mcp.Required(),
@@ -39,10 +41,12 @@ func registerXrayTools(s *server.MCPServer, client *xui.Client) {
 	// --- Routing rules convenience tools ---
 
 	s.AddTool(mcp.NewTool("get_routing_rules",
+		readsPanel,
 		mcp.WithDescription("Get only the routing section from the Xray template config. Returns the routing object with domainStrategy and rules array."),
 	), h.getRoutingRules)
 
 	s.AddTool(mcp.NewTool("add_routing_rule",
+		writesPanel,
 		mcp.WithDescription(`Add a new routing rule to the Xray config. The rule is a JSON object. Common fields:
 - "type": "field" (always)
 - "outboundTag": target outbound name (e.g. "direct", "blocked", "proxy")
@@ -64,6 +68,7 @@ Example: {"type":"field","outboundTag":"direct","domain":["geosite:category-ru"]
 	), h.addRule)
 
 	s.AddTool(mcp.NewTool("remove_routing_rule",
+		destroysPanel,
 		mcp.WithDescription("Remove a routing rule by its index (0-based). Use get_routing_rules first to see current rules and their indices."),
 		mcp.WithNumber("index",
 			mcp.Required(),
@@ -72,6 +77,7 @@ Example: {"type":"field","outboundTag":"direct","domain":["geosite:category-ru"]
 	), h.removeRule)
 
 	s.AddTool(mcp.NewTool("update_routing_rule",
+		updatesPanel,
 		mcp.WithDescription("Replace a routing rule at a specific index with a new rule. Use get_routing_rules first to see current rules."),
 		mcp.WithNumber("index",
 			mcp.Required(),
@@ -86,14 +92,17 @@ Example: {"type":"field","outboundTag":"direct","domain":["geosite:category-ru"]
 	// --- Outbound tools ---
 
 	s.AddTool(mcp.NewTool("get_outbounds",
+		readsPanel,
 		mcp.WithDescription("Get the outbound configurations from the Xray template. Shows all defined outbounds (proxy, direct, blocked, etc.) with their protocols and settings."),
 	), h.getOutbounds)
 
 	s.AddTool(mcp.NewTool("get_outbounds_traffic",
+		readsPanel,
 		mcp.WithDescription("Get traffic statistics for all outbound connections."),
 	), h.getOutboundsTraffic)
 
 	s.AddTool(mcp.NewTool("reset_outbound_traffic",
+		destroysPanel,
 		mcp.WithDescription("Reset traffic counters for a specific outbound by its tag name."),
 		mcp.WithString("tag",
 			mcp.Required(),
@@ -102,6 +111,7 @@ Example: {"type":"field","outboundTag":"direct","domain":["geosite:category-ru"]
 	), h.resetOutboundTraffic)
 
 	s.AddTool(mcp.NewTool("test_outbound",
+		probesRemote,
 		mcp.WithDescription("Test an outbound configuration for connectivity and measure latency."),
 		mcp.WithString("outbound",
 			mcp.Required(),
@@ -112,12 +122,14 @@ Example: {"type":"field","outboundTag":"direct","domain":["geosite:category-ru"]
 	// --- Balancer & routing diagnostics ---
 
 	s.AddTool(mcp.NewTool("get_balancers",
+		readsPanel,
 		mcp.WithDescription("List the load balancers defined in routing.balancers together with their live state in the running Xray core. "+
 			"For each balancer: the saved definition (selector, fallbackTag, strategy) plus 'live' with running, override (the outbound it is pinned to, if any) and selected (what the strategy picks right now). "+
 			"Routing rules reference a balancer through 'balancerTag' instead of 'outboundTag'."),
 	), h.getBalancers)
 
 	s.AddTool(mcp.NewTool("set_balancer_override",
+		updatesPanel,
 		mcp.WithDescription("Pin a balancer to one outbound in the running core, bypassing its strategy. Applies immediately without a restart, and is cleared when Xray restarts. "+
 			"Leave 'target' empty to release the override and hand control back to the strategy. Use get_balancers for valid tags and get_outbounds for target names."),
 		mcp.WithString("tag",
@@ -130,6 +142,7 @@ Example: {"type":"field","outboundTag":"direct","domain":["geosite:category-ru"]
 	), h.setBalancerOverride)
 
 	s.AddTool(mcp.NewTool("test_route",
+		readsPanel,
 		mcp.WithDescription("Ask the running Xray core which outbound its router would pick for a synthetic connection. No traffic is sent. "+
 			"Returns matched (false means no rule matched and the default outbound would be used), outboundTag, and groupTags for the balancer chain the decision went through. "+
 			"Either domain or ip is required."),
@@ -159,11 +172,13 @@ Example: {"type":"field","outboundTag":"direct","domain":["geosite:category-ru"]
 	// --- Outbound subscriptions ---
 
 	s.AddTool(mcp.NewTool("list_outbound_subs",
+		readsPanel,
 		mcp.WithDescription("List the outbound subscriptions — remote URLs that supply extra outbounds, fetched on a timer and merged into the running Xray config. "+
 			"Shows each subscription's id, remark, url, tagPrefix, enabled flag, updateInterval, priority, prepend, outboundCount, lastUpdated and lastError."),
 	), h.listOutboundSubs)
 
 	s.AddTool(mcp.NewTool("preview_outbound_sub",
+		probesRemote,
 		mcp.WithDescription("Fetch and parse a subscription URL without saving it — use this to see what outbounds it would contribute before creating it."),
 		mcp.WithString("url",
 			mcp.Required(),
@@ -180,6 +195,7 @@ Example: {"type":"field","outboundTag":"direct","domain":["geosite:category-ru"]
 	), h.previewOutboundSub)
 
 	s.AddTool(mcp.NewTool("create_outbound_sub",
+		fetchesRemote,
 		mcp.WithDescription("Add an outbound subscription. The panel fetches the URL, parses it into outbounds with stable tags derived from tag_prefix, and merges them into the config additively — the template's own outbounds stay."),
 		mcp.WithString("url",
 			mcp.Required(),
@@ -214,6 +230,7 @@ Example: {"type":"field","outboundTag":"direct","domain":["geosite:category-ru"]
 	), h.createOutboundSub)
 
 	s.AddTool(mcp.NewTool("update_outbound_sub",
+		updatesPanel,
 		mcp.WithDescription("Update an outbound subscription. Pass only the fields you want to change — the rest are read from the current subscription first, since the panel endpoint overwrites every field."),
 		mcp.WithNumber("id",
 			mcp.Required(),
@@ -246,6 +263,7 @@ Example: {"type":"field","outboundTag":"direct","domain":["geosite:category-ru"]
 	), h.updateOutboundSub)
 
 	s.AddTool(mcp.NewTool("refresh_outbound_sub",
+		fetchesRemote,
 		mcp.WithDescription("Re-fetch a subscription right now instead of waiting for its interval, and return the outbounds it parsed."),
 		mcp.WithNumber("id",
 			mcp.Required(),
@@ -254,6 +272,7 @@ Example: {"type":"field","outboundTag":"direct","domain":["geosite:category-ru"]
 	), h.refreshOutboundSub)
 
 	s.AddTool(mcp.NewTool("move_outbound_sub",
+		writesPanel,
 		mcp.WithDescription("Move a subscription one step up or down in priority. Order decides where its outbounds sit in the merged config."),
 		mcp.WithNumber("id",
 			mcp.Required(),
@@ -267,6 +286,7 @@ Example: {"type":"field","outboundTag":"direct","domain":["geosite:category-ru"]
 	), h.moveOutboundSub)
 
 	s.AddTool(mcp.NewTool("delete_outbound_sub",
+		destroysPanel,
 		mcp.WithDescription("Delete an outbound subscription. Its outbounds disappear from the merged config on the next Xray reload; routing rules that referenced their tags will stop matching."),
 		mcp.WithNumber("id",
 			mcp.Required(),

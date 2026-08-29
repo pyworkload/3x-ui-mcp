@@ -20,10 +20,12 @@ func registerInboundTools(s *server.MCPServer, client *xui.Client) {
 	h := &inboundHandler{client: client}
 
 	s.AddTool(mcp.NewTool("list_inbounds",
+		readsPanel,
 		mcp.WithDescription("List all inbound connections configured in the 3x-ui panel. Returns array of inbounds with their ports, protocols, remarks, traffic stats, and client statistics."),
 	), h.list)
 
 	s.AddTool(mcp.NewTool("get_inbound",
+		readsPanel,
 		mcp.WithDescription("Get detailed information about a specific inbound by its ID. Includes protocol settings, stream settings, sniffing config, and per-client stats."),
 		mcp.WithNumber("id",
 			mcp.Required(),
@@ -32,6 +34,7 @@ func registerInboundTools(s *server.MCPServer, client *xui.Client) {
 	), h.get)
 
 	s.AddTool(mcp.NewTool("create_inbound",
+		writesPanel,
 		mcp.WithDescription("Create a new inbound connection. The 'settings', 'stream_settings', and 'sniffing' parameters are JSON strings matching 3x-ui format. Example settings for VLESS: {\"clients\":[{\"id\":\"uuid\",\"flow\":\"xtls-rprx-vision\",\"email\":\"user1\",\"limitIp\":0,\"totalGB\":0,\"expiryTime\":0,\"enable\":true,\"tgId\":\"\",\"subId\":\"\"}],\"decryption\":\"none\",\"fallbacks\":[]}"),
 		mcp.WithString("remark",
 			mcp.Required(),
@@ -76,6 +79,7 @@ func registerInboundTools(s *server.MCPServer, client *xui.Client) {
 	), h.create)
 
 	s.AddTool(mcp.NewTool("update_inbound",
+		updatesPanel,
 		mcp.WithDescription("Update an existing inbound. Pass only the fields you want to change — unspecified fields are preserved (read-modify-write against the current inbound). "+
 			"Accepted fields: remark, port, protocol, listen, enable, settings, stream_settings (aka streamSettings), sniffing, expiry_time (aka expiryTime), total, tag. "+
 			"snake_case and camelCase names are both accepted. "+
@@ -91,6 +95,7 @@ func registerInboundTools(s *server.MCPServer, client *xui.Client) {
 	), h.update)
 
 	s.AddTool(mcp.NewTool("delete_inbound",
+		destroysPanel,
 		mcp.WithDescription("Permanently delete an inbound and all its associated client data. This action cannot be undone."),
 		mcp.WithNumber("id",
 			mcp.Required(),
@@ -99,6 +104,7 @@ func registerInboundTools(s *server.MCPServer, client *xui.Client) {
 	), h.delete)
 
 	s.AddTool(mcp.NewTool("set_inbound_enable",
+		updatesPanel,
 		mcp.WithDescription("Enable or disable an inbound. Touches only the enable flag — preferred over update_inbound for a simple on/off, since it never rewrites the settings JSON."),
 		mcp.WithNumber("id",
 			mcp.Required(),
@@ -111,6 +117,7 @@ func registerInboundTools(s *server.MCPServer, client *xui.Client) {
 	), h.setEnable)
 
 	s.AddTool(mcp.NewTool("reset_inbound_traffic",
+		destroysPanel,
 		mcp.WithDescription("Zero the upload/download counters of a single inbound. Per-client counters are left untouched — use reset_client_traffic or bulk_reset_traffic for those."),
 		mcp.WithNumber("id",
 			mcp.Required(),
@@ -119,6 +126,7 @@ func registerInboundTools(s *server.MCPServer, client *xui.Client) {
 	), h.resetTraffic)
 
 	s.AddTool(mcp.NewTool("delete_all_inbound_clients",
+		destroysPanel,
 		mcp.WithDescription("Remove every client attached to one inbound, keeping the inbound itself. Clients attached to other inbounds as well are deleted panel-wide, since clients are email-keyed entities. Cannot be undone."),
 		mcp.WithNumber("id",
 			mcp.Required(),
@@ -127,6 +135,7 @@ func registerInboundTools(s *server.MCPServer, client *xui.Client) {
 	), h.deleteAllClients)
 
 	s.AddTool(mcp.NewTool("bulk_delete_inbounds",
+		destroysPanel,
 		mcp.WithDescription("Delete several inbounds in one call. The panel processes them sequentially, reports failures per id while the rest still proceed, and restarts Xray at most once. Cannot be undone."),
 		mcp.WithString("ids",
 			mcp.Required(),
@@ -135,6 +144,7 @@ func registerInboundTools(s *server.MCPServer, client *xui.Client) {
 	), h.bulkDelete)
 
 	s.AddTool(mcp.NewTool("get_all_inbound_links",
+		readsPanel,
 		mcp.WithDescription("Get the connection URLs (vless://, vmess://, trojan://, ss://, ...) for every client across every inbound, rendered through the panel's subscription engine with the configured remark template."),
 	), h.allLinks)
 }

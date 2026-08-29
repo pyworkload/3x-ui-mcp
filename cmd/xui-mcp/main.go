@@ -22,6 +22,20 @@ var (
 	date    = "unknown"
 )
 
+// instructions ship with the server's capabilities: they carry the panel
+// conventions a client cannot infer from the tool schemas alone.
+const instructions = `Control a 3x-ui panel (Xray/V2Ray) over its HTTP API. Tool results are the panel's own JSON.
+
+Conventions that are easy to get wrong:
+- Clients are keyed by email, not UUID. add_client attaches a new client to inbound IDs; update_client reads the current record first and overlays only the fields you pass, so anything you omit — the UUID above all — survives.
+- update_inbound and update_outbound_sub follow the same read-modify-write contract: pass only what changes.
+- Routing rules are edited through the whole Xray template, so add/update/remove_routing_rule rewrite it; update_xray_template replaces it outright.
+- A balancer override from set_balancer_override lives in the running core only — Xray forgets it on restart.
+- "Subscription" means two different things: create/refresh/list_outbound_subs pull remote outbound lists into this panel, while get_subscription_links returns the links this panel serves to its own users.
+- Client traffic limits are given in GB in tool parameters; the panel stores bytes.
+
+Every tool is annotated with its effect. Read-only tools are safe to call while exploring; the ones marked destructive delete data, zero counters, or drop live connections.`
+
 func main() {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
 		Level: logLevel(),
@@ -40,6 +54,7 @@ func main() {
 		"3x-ui",
 		version,
 		server.WithToolCapabilities(true),
+		server.WithInstructions(instructions),
 	)
 
 	handler.RegisterAll(s, client)

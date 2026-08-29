@@ -21,6 +21,7 @@ func registerClientTools(s *server.MCPServer, client *xui.Client) {
 	h := &clientHandler{client: client}
 
 	s.AddTool(mcp.NewTool("add_client",
+		writesPanel,
 		mcp.WithDescription("Add a new client (user) and attach it to one or more inbounds. In 3x-ui v3.2.8 a client is a first-class, email-keyed entity. A UUID is auto-generated for VMess/VLESS if not provided; for Trojan/Shadowsocks/Hysteria the panel generates the key server-side when omitted."),
 		mcp.WithArray("inbound_ids",
 			mcp.Required(),
@@ -75,6 +76,7 @@ func registerClientTools(s *server.MCPServer, client *xui.Client) {
 	), h.add)
 
 	s.AddTool(mcp.NewTool("update_client",
+		updatesPanel,
 		mcp.WithDescription("Update an existing client by email. Only the fields you pass are changed; everything else (including the UUID/password) is preserved by reading the current client first. Optionally restrict the update to specific inbounds via inbound_ids."),
 		mcp.WithString("email",
 			mcp.Required(),
@@ -129,6 +131,7 @@ func registerClientTools(s *server.MCPServer, client *xui.Client) {
 	), h.update)
 
 	s.AddTool(mcp.NewTool("delete_client",
+		destroysPanel,
 		mcp.WithDescription("Remove a client (from all its inbounds) by email."),
 		mcp.WithString("email",
 			mcp.Required(),
@@ -141,6 +144,7 @@ func registerClientTools(s *server.MCPServer, client *xui.Client) {
 	), h.delete)
 
 	s.AddTool(mcp.NewTool("get_client",
+		readsPanel,
 		mcp.WithDescription("Get a single client's full configuration (UUID, limits, settings) and the inbounds it is attached to, by email."),
 		mcp.WithString("email",
 			mcp.Required(),
@@ -149,6 +153,7 @@ func registerClientTools(s *server.MCPServer, client *xui.Client) {
 	), h.get)
 
 	s.AddTool(mcp.NewTool("list_clients",
+		readsPanel,
 		mcp.WithDescription("List clients with pagination, search and filtering. Returns a compact page plus totals and a summary."),
 		mcp.WithString("search",
 			mcp.Description("Substring match on email/subId/comment"),
@@ -180,6 +185,7 @@ func registerClientTools(s *server.MCPServer, client *xui.Client) {
 	), h.list)
 
 	s.AddTool(mcp.NewTool("attach_client",
+		updatesPanel,
 		mcp.WithDescription("Attach an existing client to additional inbounds, by email."),
 		mcp.WithString("email",
 			mcp.Required(),
@@ -193,6 +199,7 @@ func registerClientTools(s *server.MCPServer, client *xui.Client) {
 	), h.attach)
 
 	s.AddTool(mcp.NewTool("detach_client",
+		destroysPanel,
 		mcp.WithDescription("Detach a client from the given inbounds, by email. The client itself is kept (use delete_client to remove it entirely)."),
 		mcp.WithString("email",
 			mcp.Required(),
@@ -206,6 +213,7 @@ func registerClientTools(s *server.MCPServer, client *xui.Client) {
 	), h.detach)
 
 	s.AddTool(mcp.NewTool("bulk_create_clients",
+		writesPanel,
 		mcp.WithDescription("Create many clients at once across the same set of inbounds, sharing common limits. Each client gets an auto-generated UUID."),
 		mcp.WithArray("emails",
 			mcp.Required(),
@@ -242,6 +250,7 @@ func registerClientTools(s *server.MCPServer, client *xui.Client) {
 	), h.bulkCreate)
 
 	s.AddTool(mcp.NewTool("bulk_delete_clients",
+		destroysPanel,
 		mcp.WithDescription("Delete many clients at once by email."),
 		mcp.WithArray("emails",
 			mcp.Required(),
@@ -255,6 +264,7 @@ func registerClientTools(s *server.MCPServer, client *xui.Client) {
 	), h.bulkDelete)
 
 	s.AddTool(mcp.NewTool("get_client_traffic",
+		readsPanel,
 		mcp.WithDescription("Get upload/download traffic statistics for a client by email. Returns current usage, limits, and enable status."),
 		mcp.WithString("email",
 			mcp.Required(),
@@ -263,6 +273,7 @@ func registerClientTools(s *server.MCPServer, client *xui.Client) {
 	), h.getTraffic)
 
 	s.AddTool(mcp.NewTool("get_client_ips",
+		readsPanel,
 		mcp.WithDescription("Get IP addresses recorded for a client, with timestamps."),
 		mcp.WithString("email",
 			mcp.Required(),
@@ -271,6 +282,7 @@ func registerClientTools(s *server.MCPServer, client *xui.Client) {
 	), h.getIPs)
 
 	s.AddTool(mcp.NewTool("clear_client_ips",
+		destroysPanel,
 		mcp.WithDescription("Clear all recorded IP addresses for a client."),
 		mcp.WithString("email",
 			mcp.Required(),
@@ -279,6 +291,7 @@ func registerClientTools(s *server.MCPServer, client *xui.Client) {
 	), h.clearIPs)
 
 	s.AddTool(mcp.NewTool("reset_client_traffic",
+		destroysPanel,
 		mcp.WithDescription("Reset traffic counters (upload/download) for a specific client to zero, by email."),
 		mcp.WithString("email",
 			mcp.Required(),
@@ -287,14 +300,17 @@ func registerClientTools(s *server.MCPServer, client *xui.Client) {
 	), h.resetTraffic)
 
 	s.AddTool(mcp.NewTool("reset_all_traffics",
+		destroysPanel,
 		mcp.WithDescription("Reset all traffic counters across all inbounds. Use with caution."),
 	), h.resetAllTraffics)
 
 	s.AddTool(mcp.NewTool("reset_all_client_traffics",
+		destroysPanel,
 		mcp.WithDescription("Reset traffic counters for every client panel-wide. Use with caution."),
 	), h.resetAllClientTraffics)
 
 	s.AddTool(mcp.NewTool("bulk_reset_traffic",
+		destroysPanel,
 		mcp.WithDescription("Reset traffic counters for a specific set of clients, by email."),
 		mcp.WithArray("emails",
 			mcp.Required(),
@@ -304,18 +320,22 @@ func registerClientTools(s *server.MCPServer, client *xui.Client) {
 	), h.bulkResetTraffic)
 
 	s.AddTool(mcp.NewTool("delete_depleted_clients",
+		destroysPanel,
 		mcp.WithDescription("Remove all clients panel-wide that have exhausted their traffic or expired."),
 	), h.deleteDepleted)
 
 	s.AddTool(mcp.NewTool("get_online_clients",
+		readsPanel,
 		mcp.WithDescription("Get a list of currently connected/active clients."),
 	), h.getOnline)
 
 	s.AddTool(mcp.NewTool("get_last_online",
+		readsPanel,
 		mcp.WithDescription("Get the last-online timestamp for every client."),
 	), h.getLastOnline)
 
 	s.AddTool(mcp.NewTool("update_client_traffic",
+		destroysPanel,
 		mcp.WithDescription("Set specific upload/download byte values for a client's traffic counter."),
 		mcp.WithString("email",
 			mcp.Required(),
@@ -332,6 +352,7 @@ func registerClientTools(s *server.MCPServer, client *xui.Client) {
 	), h.updateTraffic)
 
 	s.AddTool(mcp.NewTool("get_subscription_links",
+		readsPanel,
 		mcp.WithDescription("Get the connection URLs served under a subscription ID — every enabled client whose subId matches, one URL per inbound (and per external proxy where configured). "+
 			"Same set as the public /sub/<subId> endpoint, but as a JSON array instead of base64. A client's subId comes from get_client or list_clients."),
 		mcp.WithString("sub_id",
