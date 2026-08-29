@@ -77,3 +77,40 @@ func (c *Client) BulkDeleteInbounds(ctx context.Context, ids []int) (*Response, 
 func (c *Client) GetAllInboundLinks(ctx context.Context) (*Response, error) {
 	return c.Get(ctx, "panel/api/inbounds/allLinks")
 }
+
+// --- Inbound projections and fallbacks (panel v3.6.0+/v3.7.0+) ---
+
+// ListInboundsSlim is List with the client arrays stripped to {email, enable,
+// comment} and no UUID/subId enrichment — the cheap call for a wide panel.
+func (c *Client) ListInboundsSlim(ctx context.Context) (*Response, error) {
+	return c.Get(ctx, "panel/api/inbounds/list/slim")
+}
+
+// InboundOptions returns a picker projection of the inbounds: id, remark, tag,
+// protocol, port and the server-computed capability flags.
+func (c *Client) InboundOptions(ctx context.Context) (*Response, error) {
+	return c.Get(ctx, "panel/api/inbounds/options")
+}
+
+// GetInboundFallbacks lists the fallback rules on a master VLESS/Trojan
+// TCP-TLS inbound, each linking a child inbound to SNI/ALPN/path conditions.
+func (c *Client) GetInboundFallbacks(ctx context.Context, id int) (*Response, error) {
+	return c.Get(ctx, fmt.Sprintf("panel/api/inbounds/%d/fallbacks", id))
+}
+
+// SetInboundFallbacks replaces the whole fallback list for a master inbound
+// and restarts Xray. Unlike the update endpoints this is not read-modify-write:
+// whatever is passed becomes the complete set.
+func (c *Client) SetInboundFallbacks(ctx context.Context, id int, fallbacks any) (*Response, error) {
+	return c.PostJSON(ctx, fmt.Sprintf("panel/api/inbounds/%d/fallbacks", id), map[string]any{
+		"fallbacks": fallbacks,
+	})
+}
+
+// SetInboundSubSortIndex sets only the subscription sort order, reading the
+// stored inbound first so a reorder cannot revive a stale client list.
+func (c *Client) SetInboundSubSortIndex(ctx context.Context, id, index int) (*Response, error) {
+	return c.PostJSON(ctx, fmt.Sprintf("panel/api/inbounds/%d/subSortIndex", id), map[string]any{
+		"subSortIndex": index,
+	})
+}

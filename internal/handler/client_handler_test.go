@@ -158,3 +158,65 @@ func TestUpdateClient_PreservesOmittedFields(t *testing.T) {
 		t.Errorf("totalGB = %d, want %d (10 GB)", updateBody.TotalGB, 10*1073741824)
 	}
 }
+
+// add_gb is the tool's unit; the panel's is bytes. A fractional GB has to
+// survive the conversion, since renewals are often sold in half-terabytes.
+func TestBulkAdjustClients_ConvertsGBToBytes(t *testing.T) {
+	var gotBody map[string]any
+
+	h, _ := newClientHandler(t, func(w http.ResponseWriter, r *http.Request) {
+		if writeCSRF(w, r) {
+			return
+		}
+		switch r.URL.Path {
+		case "/login":
+			_ = json.NewEncoder(w).Encode(map[string]any{"success": true})
+		case "/panel/api/clients/bulkAdjust":
+			if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+				t.Errorf("decoding body: %v", err)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"success": true})
+		default:
+			t.Errorf("unexpected path %s", r.URL.Path)
+		}
+	})
+
+	res, err := h.bulkAdjust(context.Background(), req(map[string]any{
+		"emails": []any{"alice"},
+		"add_gb": 1.5,
+	}))
+	if err != nil {
+		t.Fatalf("bulkAdjust returned error: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("bulkAdjust reported a tool error: %+v", res.Content)
+	}
+
+	const wantBytes = 1.5 * bytesPerGB
+	if gotBody["addBytes"] != float64(wantBytes) {
+		t.Errorf("addBytes = %v, want %v", gotBody["addBytes"], float64(wantBytes))
+	}
+}
+
+// Every delta defaulting to zero would send the panel a no-op that still
+// reports success, so the tool asks for one before making the call.
+func TestBulkAdjustClients_RejectsEmptyAdjustment(t *testing.T) {
+	h, _ := newClientHandler(t, func(w http.ResponseWriter, r *http.Request) {
+		if writeCSRF(w, r) {
+			return
+		}
+		if r.URL.Path == "/login" {
+			_ = json.NewEncoder(w).Encode(map[string]any{"success": true})
+			return
+		}
+		t.Errorf("panel was called for an empty adjustment: %s", r.URL.Path)
+	})
+
+	res, err := h.bulkAdjust(context.Background(), req(map[string]any{"emails": []any{"alice"}}))
+	if err != nil {
+		t.Fatalf("bulkAdjust returned error: %v", err)
+	}
+	if !res.IsError {
+		t.Error("bulkAdjust accepted an adjustment with nothing to adjust")
+	}
+}

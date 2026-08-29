@@ -147,6 +147,52 @@ func registerInboundTools(s *server.MCPServer, client *xui.Client) {
 		readsPanel,
 		mcp.WithDescription("Get the connection URLs (vless://, vmess://, trojan://, ss://, ...) for every client across every inbound, rendered through the panel's subscription engine with the configured remark template."),
 	), h.allLinks)
+
+	s.AddTool(mcp.NewTool("list_inbounds_slim",
+		readsPanel,
+		mcp.WithDescription("List inbounds with each client array stripped to email, enable and comment, and no UUID or subId enrichment. The cheap call for a panel with many clients — use list_inbounds when the credentials themselves are needed."),
+	), h.listSlim)
+
+	s.AddTool(mcp.NewTool("get_inbound_options",
+		readsPanel,
+		mcp.WithDescription("Picker projection of the inbounds: id, remark, tag, protocol, port and the server-computed capability flags (such as whether an inbound can carry XTLS flow). Cheaper than list_inbounds when only choosing one."),
+	), h.options)
+
+	s.AddTool(mcp.NewTool("get_inbound_fallbacks",
+		readsPanel,
+		mcp.WithDescription("List the fallback rules on a master VLESS/Trojan TCP-TLS inbound. Each rule routes traffic that matched no client to a child inbound, keyed by SNI, ALPN, path or dest."),
+		mcp.WithNumber("id",
+			mcp.Required(),
+			mcp.Description("Master inbound ID"),
+		),
+	), h.getFallbacks)
+
+	s.AddTool(mcp.NewTool("set_inbound_fallbacks",
+		destroysPanel,
+		mcp.WithDescription("Replace the whole fallback list of a master inbound and restart Xray. This is not read-modify-write: whatever is passed becomes the complete set, so read get_inbound_fallbacks first and send the full list back with your change."),
+		mcp.WithNumber("id",
+			mcp.Required(),
+			mcp.Description("Master inbound ID"),
+		),
+		mcp.WithString("fallbacks",
+			mcp.Required(),
+			mcp.Description(`JSON array of fallback rules, e.g. [{"childId":11,"path":"/vlws","xver":2},{"childId":12,"alpn":"h2"}]. Pass [] to remove every fallback.`),
+		),
+	), h.setFallbacks)
+
+	s.AddTool(mcp.NewTool("set_inbound_sub_sort_index",
+		updatesPanel,
+		mcp.WithDescription("Set an inbound's position in subscription output without touching anything else. Reads the stored inbound first, so reordering cannot revive a stale client list."),
+		mcp.WithNumber("id",
+			mcp.Required(),
+			mcp.Description("Inbound ID"),
+		),
+		mcp.WithNumber("index",
+			mcp.Required(),
+			mcp.Description("Sort position; lower sorts first"),
+		),
+	), h.setSubSortIndex)
+
 }
 
 func (h *inboundHandler) list(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -406,4 +452,48 @@ func parseInboundIDs(raw string) ([]int, error) {
 
 func (h *inboundHandler) allLinks(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return toResult(h.client.GetAllInboundLinks(ctx))
+}
+
+func (h *inboundHandler) listSlim(ctx context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return toResult(h.client.ListInboundsSlim(ctx))
+}
+
+func (h *inboundHandler) options(ctx context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return toResult(h.client.InboundOptions(ctx))
+}
+
+func (h *inboundHandler) getFallbacks(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	id, err := req.RequireFloat("id")
+	if err != nil {
+		return mcp.NewToolResultError("id is required"), nil
+	}
+	return toResult(h.client.GetInboundFallbacks(ctx, int(id)))
+}
+
+func (h *inboundHandler) setFallbacks(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	id, err := req.RequireFloat("id")
+	if err != nil {
+		return mcp.NewToolResultError("id is required"), nil
+	}
+	raw, err := req.RequireString("fallbacks")
+	if err != nil {
+		return mcp.NewToolResultError("fallbacks is required"), nil
+	}
+	var rules []map[string]any
+	if err := json.Unmarshal([]byte(raw), &rules); err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("fallbacks must be a JSON array: %v", err)), nil
+	}
+	return toResult(h.client.SetInboundFallbacks(ctx, int(id), rules))
+}
+
+func (h *inboundHandler) setSubSortIndex(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	id, err := req.RequireFloat("id")
+	if err != nil {
+		return mcp.NewToolResultError("id is required"), nil
+	}
+	index, err := req.RequireFloat("index")
+	if err != nil {
+		return mcp.NewToolResultError("index is required"), nil
+	}
+	return toResult(h.client.SetInboundSubSortIndex(ctx, int(id), int(index)))
 }

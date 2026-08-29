@@ -401,6 +401,12 @@ func (c *Client) PostForm(ctx context.Context, path string, data url.Values) (*R
 	return c.do(ctx, http.MethodPost, path, "application/x-www-form-urlencoded", []byte(data.Encode()))
 }
 
+// Delete performs an authenticated DELETE. The panel uses it for the HWID
+// device routes, which carry everything they need in the path.
+func (c *Client) Delete(ctx context.Context, path string) (*Response, error) {
+	return c.do(ctx, http.MethodDelete, path, "", nil)
+}
+
 // Post performs an authenticated POST with no body.
 func (c *Client) Post(ctx context.Context, path string) (*Response, error) {
 	return c.do(ctx, http.MethodPost, path, "", nil)

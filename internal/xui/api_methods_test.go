@@ -14,6 +14,7 @@ import (
 type recordedRequest struct {
 	path        string
 	escapedPath string
+	rawQuery    string
 	method      string
 	contentType string
 	body        string
@@ -35,6 +36,7 @@ func recordingClient(t *testing.T) (*Client, *recordedRequest) {
 		body, _ := io.ReadAll(r.Body)
 		rec.path = r.URL.Path
 		rec.escapedPath = r.URL.EscapedPath()
+		rec.rawQuery = r.URL.RawQuery
 		rec.method = r.Method
 		rec.contentType = r.Header.Get("Content-Type")
 		rec.body = string(body)
@@ -360,5 +362,150 @@ func TestGetSubscriptionLinks_EscapesSubID(t *testing.T) {
 	}
 	if rec.path != "/panel/api/clients/subLinks/team a/1" {
 		t.Errorf("decoded path = %q, want the sub id intact", rec.path)
+	}
+}
+
+// --- Observability, group, geodata and device methods ---
+
+func TestMetricsHistory_PathCarriesMetricAndBucket(t *testing.T) {
+	client, rec := recordingClient(t)
+
+	if _, err := client.MetricsHistory(context.Background(), "netUp", 360); err != nil {
+		t.Fatalf("MetricsHistory returned error: %v", err)
+	}
+
+	if rec.path != "/panel/api/server/history/netUp/360" {
+		t.Errorf("path = %q, want %q", rec.path, "/panel/api/server/history/netUp/360")
+	}
+	if rec.method != http.MethodGet {
+		t.Errorf("method = %q, want GET", rec.method)
+	}
+}
+
+// A group name is user-supplied and lands in the path, so it has to survive
+// spaces and slashes rather than splitting the route.
+func TestClientGroupEmails_EscapesGroupName(t *testing.T) {
+	client, rec := recordingClient(t)
+
+	if _, err := client.ClientGroupEmails(context.Background(), "tier 1/eu"); err != nil {
+		t.Fatalf("ClientGroupEmails returned error: %v", err)
+	}
+
+	want := "/panel/api/clients/groups/tier%201%2Feu/emails"
+	if rec.escapedPath != want {
+		t.Errorf("escaped path = %q, want %q", rec.escapedPath, want)
+	}
+}
+
+func TestRenameClientGroup_SendsBothNames(t *testing.T) {
+	client, rec := recordingClient(t)
+
+	if _, err := client.RenameClientGroup(context.Background(), "customer-a", "tier-1"); err != nil {
+		t.Fatalf("RenameClientGroup returned error: %v", err)
+	}
+
+	var body map[string]any
+	if err := json.Unmarshal([]byte(rec.body), &body); err != nil {
+		t.Fatalf("body is not JSON: %v (%s)", err, rec.body)
+	}
+	if body["oldName"] != "customer-a" || body["newName"] != "tier-1" {
+		t.Errorf("body = %v, want oldName=customer-a newName=tier-1", body)
+	}
+}
+
+// Paging defaults are the panel's, not ours: unset offset/limit must stay out
+// of the query so "omit limit to get every category" keeps working.
+func TestGeodataCategories_OmitsUnsetPaging(t *testing.T) {
+	client, rec := recordingClient(t)
+
+	if _, err := client.GeodataCategories(context.Background(), "geosite.dat", "", 0, 0); err != nil {
+		t.Fatalf("GeodataCategories returned error: %v", err)
+	}
+
+	if rec.rawQuery != "file=geosite.dat" {
+		t.Errorf("query = %q, want %q", rec.rawQuery, "file=geosite.dat")
+	}
+}
+
+func TestGeodataEntries_CarriesFilterAndPaging(t *testing.T) {
+	client, rec := recordingClient(t)
+
+	if _, err := client.GeodataEntries(context.Background(), "geosite.dat", "google", "mail", 20, 50); err != nil {
+		t.Fatalf("GeodataEntries returned error: %v", err)
+	}
+
+	q, err := url.ParseQuery(rec.rawQuery)
+	if err != nil {
+		t.Fatalf("query is not parseable: %v", err)
+	}
+	for key, want := range map[string]string{"file": "geosite.dat", "code": "google", "q": "mail", "offset": "20", "limit": "50"} {
+		if got := q.Get(key); got != want {
+			t.Errorf("query %s = %q, want %q", key, got, want)
+		}
+	}
+}
+
+// validate is the one geodata route that takes form data, not JSON.
+func TestValidateGeodataTokens_PostsForm(t *testing.T) {
+	client, rec := recordingClient(t)
+
+	if _, err := client.ValidateGeodataTokens(context.Background(), "ip", "geoip:cn,10.0.0.0/8"); err != nil {
+		t.Fatalf("ValidateGeodataTokens returned error: %v", err)
+	}
+
+	if !strings.HasPrefix(rec.contentType, "application/x-www-form-urlencoded") {
+		t.Errorf("content type = %q, want form encoding", rec.contentType)
+	}
+	form, err := url.ParseQuery(rec.body)
+	if err != nil {
+		t.Fatalf("body is not a form: %v", err)
+	}
+	if form.Get("kind") != "ip" || form.Get("tokens") != "geoip:cn,10.0.0.0/8" {
+		t.Errorf("form = %v, want kind=ip and the token list", form)
+	}
+}
+
+func TestClientDevices_UseDeleteForRemoval(t *testing.T) {
+	client, rec := recordingClient(t)
+
+	if _, err := client.ClearClientDevices(context.Background(), "alice"); err != nil {
+		t.Fatalf("ClearClientDevices returned error: %v", err)
+	}
+	if rec.method != http.MethodDelete {
+		t.Errorf("clear method = %q, want DELETE", rec.method)
+	}
+	if rec.path != "/panel/api/clients/hwids/alice" {
+		t.Errorf("clear path = %q, want %q", rec.path, "/panel/api/clients/hwids/alice")
+	}
+
+	if _, err := client.DeleteClientDevice(context.Background(), "alice", 3); err != nil {
+		t.Fatalf("DeleteClientDevice returned error: %v", err)
+	}
+	if rec.method != http.MethodDelete {
+		t.Errorf("delete method = %q, want DELETE", rec.method)
+	}
+	if rec.path != "/panel/api/clients/hwids/alice/3" {
+		t.Errorf("delete path = %q, want %q", rec.path, "/panel/api/clients/hwids/alice/3")
+	}
+}
+
+// An empty flow must not reach the panel: sending "" would clear the flow on
+// every client the adjustment touches.
+func TestBulkAdjustClients_OmitsEmptyFlow(t *testing.T) {
+	client, rec := recordingClient(t)
+
+	if _, err := client.BulkAdjustClients(context.Background(), []string{"alice"}, 30, 0, ""); err != nil {
+		t.Fatalf("BulkAdjustClients returned error: %v", err)
+	}
+
+	var body map[string]any
+	if err := json.Unmarshal([]byte(rec.body), &body); err != nil {
+		t.Fatalf("body is not JSON: %v (%s)", err, rec.body)
+	}
+	if _, present := body["flow"]; present {
+		t.Errorf("body carries flow = %v, want it omitted", body["flow"])
+	}
+	if body["addDays"] != float64(30) {
+		t.Errorf("addDays = %v, want 30", body["addDays"])
 	}
 }

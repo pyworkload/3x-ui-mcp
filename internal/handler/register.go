@@ -12,4 +12,7 @@ func RegisterAll(s *server.MCPServer, client *xui.Client) {
 	registerClientTools(s, client)
 	registerServerTools(s, client)
 	registerXrayTools(s, client)
+	registerMetricsTools(s, client)
+	registerGroupTools(s, client)
+	registerGeodataTools(s, client)
 }

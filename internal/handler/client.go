@@ -360,6 +360,93 @@ func registerClientTools(s *server.MCPServer, client *xui.Client) {
 			mcp.Description("Subscription ID (the client's subId field)"),
 		),
 	), h.getSubscriptionLinks)
+
+	s.AddTool(mcp.NewTool("get_clients_by_telegram_id",
+		readsPanel,
+		mcp.WithDescription("Look up clients by Telegram user ID. Answers with an array, since several clients can share one Telegram account."),
+		mcp.WithNumber("tg_id",
+			mcp.Required(),
+			mcp.Description("Telegram user ID (numeric)"),
+		),
+	), h.getByTelegramID)
+
+	s.AddTool(mcp.NewTool("list_client_devices",
+		readsPanel,
+		mcp.WithDescription("List the HWID devices registered for a client: first and last seen, user agent, OS and model. The hashes themselves are never exposed."),
+		mcp.WithString("email",
+			mcp.Required(),
+			mcp.Description("Client email"),
+		),
+	), h.listDevices)
+
+	s.AddTool(mcp.NewTool("delete_client_device",
+		destroysPanel,
+		mcp.WithDescription("Remove one registered device from a client, freeing a single slot under its HWID limit."),
+		mcp.WithString("email",
+			mcp.Required(),
+			mcp.Description("Client email"),
+		),
+		mcp.WithNumber("device_id",
+			mcp.Required(),
+			mcp.Description("Device id from list_client_devices"),
+		),
+	), h.deleteDevice)
+
+	s.AddTool(mcp.NewTool("clear_client_devices",
+		destroysPanel,
+		mcp.WithDescription("Drop every registered device for a client so new ones can register — the fix for a user who changed phones and hit the HWID limit."),
+		mcp.WithString("email",
+			mcp.Required(),
+			mcp.Description("Client email"),
+		),
+	), h.clearDevices)
+
+	s.AddTool(mcp.NewTool("bulk_enable_clients",
+		updatesPanel,
+		mcp.WithDescription("Enable many clients at once. Emails are grouped by inbound, so each inbound is rewritten once. Clients that do not exist come back in a 'skipped' list rather than failing the call."),
+		mcp.WithArray("emails",
+			mcp.Required(),
+			mcp.Description("Emails of the clients to enable"),
+			mcp.WithStringItems(),
+		),
+	), h.bulkEnable)
+
+	s.AddTool(mcp.NewTool("bulk_disable_clients",
+		updatesPanel,
+		mcp.WithDescription("Disable many clients at once, one rewrite per owning inbound. Their configuration is kept, so bulk_enable_clients reverses it."),
+		mcp.WithArray("emails",
+			mcp.Required(),
+			mcp.Description("Emails of the clients to disable"),
+			mcp.WithStringItems(),
+		),
+	), h.bulkDisable)
+
+	s.AddTool(mcp.NewTool("bulk_adjust_clients",
+		writesPanel,
+		mcp.WithDescription("Shift expiry and traffic quota for many clients in one call — the bulk renewal. Both deltas may be negative. Clients on unlimited expiry or unlimited traffic are reported as skipped instead of being given a limit."),
+		mcp.WithArray("emails",
+			mcp.Required(),
+			mcp.Description("Emails of the clients to adjust"),
+			mcp.WithStringItems(),
+		),
+		mcp.WithNumber("add_days",
+			mcp.Description("Days to add to each expiry date; negative shortens it"),
+			mcp.DefaultNumber(0),
+		),
+		mcp.WithNumber("add_gb",
+			mcp.Description("GB to add to each traffic quota; negative reduces it"),
+			mcp.DefaultNumber(0),
+		),
+		mcp.WithString("flow",
+			mcp.Description("Set this flow on every listed client (e.g. 'xtls-rprx-vision'). Omit to leave each client's flow alone."),
+		),
+	), h.bulkAdjust)
+
+	s.AddTool(mcp.NewTool("delete_orphan_clients",
+		destroysPanel,
+		mcp.WithDescription("Delete every client attached to no inbound, together with its traffic record, IP log, devices and external links. Cleans up after inbounds were removed without their clients."),
+	), h.deleteOrphans)
+
 }
 
 func (h *clientHandler) getSubscriptionLinks(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -696,4 +783,73 @@ func (h *clientHandler) updateTraffic(ctx context.Context, req mcp.CallToolReque
 		return mcp.NewToolResultError("download is required"), nil
 	}
 	return toResult(h.client.UpdateClientTraffic(ctx, email, int64(upload), int64(download)))
+}
+
+func (h *clientHandler) getByTelegramID(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	tgID, err := req.RequireFloat("tg_id")
+	if err != nil {
+		return mcp.NewToolResultError("tg_id is required"), nil
+	}
+	return toResult(h.client.GetClientsByTelegramID(ctx, int64(tgID)))
+}
+
+func (h *clientHandler) listDevices(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	email, err := req.RequireString("email")
+	if err != nil {
+		return mcp.NewToolResultError("email is required"), nil
+	}
+	return toResult(h.client.ListClientDevices(ctx, email))
+}
+
+func (h *clientHandler) deleteDevice(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	email, err := req.RequireString("email")
+	if err != nil {
+		return mcp.NewToolResultError("email is required"), nil
+	}
+	deviceID, err := req.RequireFloat("device_id")
+	if err != nil {
+		return mcp.NewToolResultError("device_id is required"), nil
+	}
+	return toResult(h.client.DeleteClientDevice(ctx, email, int(deviceID)))
+}
+
+func (h *clientHandler) clearDevices(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	email, err := req.RequireString("email")
+	if err != nil {
+		return mcp.NewToolResultError("email is required"), nil
+	}
+	return toResult(h.client.ClearClientDevices(ctx, email))
+}
+
+func (h *clientHandler) bulkEnable(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	emails := req.GetStringSlice("emails", nil)
+	if len(emails) == 0 {
+		return mcp.NewToolResultError("emails is required (at least one email)"), nil
+	}
+	return toResult(h.client.BulkEnableClients(ctx, emails))
+}
+
+func (h *clientHandler) bulkDisable(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	emails := req.GetStringSlice("emails", nil)
+	if len(emails) == 0 {
+		return mcp.NewToolResultError("emails is required (at least one email)"), nil
+	}
+	return toResult(h.client.BulkDisableClients(ctx, emails))
+}
+
+func (h *clientHandler) bulkAdjust(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	emails := req.GetStringSlice("emails", nil)
+	if len(emails) == 0 {
+		return mcp.NewToolResultError("emails is required (at least one email)"), nil
+	}
+	addDays := int(req.GetFloat("add_days", 0))
+	addBytes := int64(req.GetFloat("add_gb", 0) * bytesPerGB)
+	if addDays == 0 && addBytes == 0 && req.GetString("flow", "") == "" {
+		return mcp.NewToolResultError("nothing to adjust: pass add_days, add_gb or flow"), nil
+	}
+	return toResult(h.client.BulkAdjustClients(ctx, emails, addDays, addBytes, req.GetString("flow", "")))
+}
+
+func (h *clientHandler) deleteOrphans(ctx context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return toResult(h.client.DeleteOrphanClients(ctx))
 }
