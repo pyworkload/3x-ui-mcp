@@ -8,7 +8,7 @@ MCP (Model Context Protocol) server for [3x-ui](https://github.com/MHSanaei/3x-u
 
 ## Features
 
-- 124 MCP tools for inbounds, clients, groups, hosts, routing, balancers, geodata, metrics, API tokens and the Xray service (3x-ui v3.3.0+ — see [Panel versions](#panel-versions))
+- 140 MCP tools for inbounds, clients, groups, hosts, nodes, routing, balancers, geodata, metrics, API tokens and the Xray service (3x-ui v3.3.0+ — see [Panel versions](#panel-versions))
 - Two auth modes: session login with CSRF, or a Bearer API token (`XUI_API_TOKEN`)
 - Automatic session management with transparent re-authentication and CSRF refresh
 - Email-keyed client model: attach/detach across inbounds, bulk operations, paged listing
@@ -92,12 +92,12 @@ Download from [Releases](https://github.com/pyworkload/3x-ui-mcp/releases), then
   *rotates* a single shared `cli-fallback` token instead of minting a new one, so
   running it again invalidates a token you handed out earlier.
 
-**Narrowing the toolset:** all 124 tool schemas together occupy roughly 20k tokens
+**Narrowing the toolset:** all 140 tool schemas together occupy roughly 24k tokens
 of model context in every session. `XUI_TOOLSETS` loads only the groups you need
 — `inbounds`, `clients`, `server`, `xray`, `metrics`, `groups`, `geodata`,
-`hosts`, `tokens`, `providers`, or `all`. `XUI_TOOLSETS=clients,metrics` leaves
-35 tools at about 5.5k tokens. An unknown name fails at startup rather than
-silently loading nothing.
+`hosts`, `nodes`, `tokens`, `providers`, or `all`. `XUI_TOOLSETS=clients,metrics`
+leaves 35 tools at about 5.5k tokens. An unknown name fails at startup rather
+than silently loading nothing.
 
 ## Panel versions
 
@@ -120,8 +120,9 @@ version listed:
 | `scan_reality_target`, `scan_reality_targets`, `get_all_inbound_links` | v3.4.2 |
 | Observability, client groups, bulk client state, inbound projections and fallbacks | v3.5.0 |
 | Host groups, API tokens, client export/import, external links, Warp and NordVPN | v3.5.0 |
+| Multi-node tools | v3.5.0 |
 | Geodata, HWID devices, `get_clients_by_telegram_id`, `set_inbound_sub_sort_index` | v3.7.0 |
-| Subscription balancers, PIA, and token `scope`/`expires_at` | v3.7.0 |
+| Subscription balancers, PIA, `reload_node_mtls_client`, and token `scope`/`expires_at` | v3.7.0 |
 
 The last two rows are bounded by the panel's own generated `openapi.json`, which
 only starts at v3.5.0 — some of those routes may predate it.
@@ -305,6 +306,35 @@ querying a country list is annotated differently from erasing credentials.
 | `manage_nordvpn` | Register with a token, set a key, or erase |
 | `get_pia_data` | Regions, servers in a region, or the stored account |
 | `manage_pia` | Log in, register a key against a server, or erase |
+
+### Multi-Node (16 tools)
+
+A node is another 3x-ui panel this one drives: inbounds and clients are pushed
+to it and its traffic is pulled back. Most of these calls reach the node itself,
+not just this panel.
+
+| Tool | Description |
+|---|---|
+| `list_nodes` | Configured nodes with health, counts and last heartbeat |
+| `get_node` | One node's connection details and sync state |
+| `get_node_history` | CPU or memory history for one node |
+| `get_node_web_cert` | The certificate and key paths that exist on the node |
+| `test_node` | Probe connection details without saving them |
+| `list_node_inbounds` | The inbounds available on a node, for selective sync |
+| `get_node_cert_fingerprint` | SHA-256 of the node's leaf certificate, for pinning |
+| `add_node` | Register a node (probed before it is saved) |
+| `update_node` | Update a node, keeping the fields you omit |
+| `set_node_enable` | Pause or resume traffic sync with a node |
+| `probe_node` | Probe a registered node and refresh its cached health |
+| `delete_node` | Delete a node; its inbounds are not migrated |
+| `get_node_mtls_ca` | This panel's node-auth CA, minted on first call |
+| `set_node_mtls_trust_ca` | The CA this panel trusts when acting as a node |
+| `reload_node_mtls_client` | Apply a rotated client certificate without a restart |
+| `update_node_panels` | Run the 3x-ui self-updater on the given nodes |
+
+The node API token is write-only from v3.6.0: the panel reports only whether one
+is set, so `update_node` omits it unless you pass a new one, and `clear_api_token`
+is how a node moved to mTLS drops the old token.
 
 ### Client Groups (8 tools)
 
