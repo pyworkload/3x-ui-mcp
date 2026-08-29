@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/url"
 	"strconv"
 
@@ -447,6 +448,37 @@ func registerClientTools(s *server.MCPServer, client *xui.Client) {
 		mcp.WithDescription("Delete every client attached to no inbound, together with its traffic record, IP log, devices and external links. Cleans up after inbounds were removed without their clients."),
 	), h.deleteOrphans)
 
+	s.AddTool(mcp.NewTool("export_clients",
+		readsPanel,
+		mcp.WithDescription("Count the clients in the panel and link to the full export at xui://clients/export. The export is the {client, inboundIds} array import_clients takes, so it round-trips — but it carries every UUID and password, so it stays behind the link unless full=true is passed."),
+		mcp.WithBoolean("full",
+			mcp.Description("Return the whole export inline instead of a count and a link"),
+			mcp.DefaultBool(false),
+		),
+	), h.export)
+
+	s.AddTool(mcp.NewTool("import_clients",
+		writesPanel,
+		mcp.WithDescription("Create clients from an exported array. Items already present are reported in a 'skipped' list rather than overwritten, so an import cannot clobber a live client."),
+		mcp.WithString("data",
+			mcp.Required(),
+			mcp.Description(`The export as a JSON string, e.g. [{"client":{"email":"alice","enable":true},"inboundIds":[7]}]`),
+		),
+	), h.importClients)
+
+	s.AddTool(mcp.NewTool("set_client_external_links",
+		destroysPanel,
+		mcp.WithDescription("Replace a client's external links and external subscriptions — servers from elsewhere that this panel serves alongside its own. The panel swaps the whole set, so send every row you want kept; an empty array clears them."),
+		mcp.WithString("email",
+			mcp.Required(),
+			mcp.Description("Client email"),
+		),
+		mcp.WithString("links",
+			mcp.Required(),
+			mcp.Description(`JSON array of rows, e.g. [{"kind":"link","value":"vless://...","remark":"DE","enable":true,"expiryTime":0},{"kind":"subscription","value":"https://provider.example/sub/abc","remark":"Provider","enable":true}]. Pass [] to remove them all.`),
+		),
+	), h.setExternalLinks)
+
 }
 
 func (h *clientHandler) getSubscriptionLinks(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -852,4 +884,44 @@ func (h *clientHandler) bulkAdjust(ctx context.Context, req mcp.CallToolRequest)
 
 func (h *clientHandler) deleteOrphans(ctx context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return toResult(h.client.DeleteOrphanClients(ctx))
+}
+
+func (h *clientHandler) export(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	resp, err := h.client.ExportClients(ctx)
+	if req.GetBool("full", false) {
+		return toResult(resp, err)
+	}
+	return linkedResult(resp, err, mcp.NewResourceLink(
+		clientsExportURI,
+		"Client export",
+		"Every client as {client, inboundIds}, credentials included. Read it to back up or to feed import_clients.",
+		"application/json",
+	), summarizeClientExport)
+}
+
+func (h *clientHandler) importClients(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	data, err := req.RequireString("data")
+	if err != nil {
+		return mcp.NewToolResultError("data is required"), nil
+	}
+	if !json.Valid([]byte(data)) {
+		return mcp.NewToolResultError("data must be a JSON array of {client, inboundIds} objects"), nil
+	}
+	return toResult(h.client.ImportClients(ctx, data))
+}
+
+func (h *clientHandler) setExternalLinks(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	email, err := req.RequireString("email")
+	if err != nil {
+		return mcp.NewToolResultError("email is required"), nil
+	}
+	raw, err := req.RequireString("links")
+	if err != nil {
+		return mcp.NewToolResultError("links is required"), nil
+	}
+	var links []map[string]any
+	if err := json.Unmarshal([]byte(raw), &links); err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("links must be a JSON array: %v", err)), nil
+	}
+	return toResult(h.client.SetClientExternalLinks(ctx, email, links))
 }

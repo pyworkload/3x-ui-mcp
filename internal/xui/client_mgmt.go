@@ -208,3 +208,25 @@ func (c *Client) BulkAdjustClients(ctx context.Context, emails []string, addDays
 	}
 	return c.PostJSON(ctx, clientsBase+"bulkAdjust", payload)
 }
+
+// --- Client export/import and external links (panel v3.7.0+) ---
+
+// ExportClients returns every client as a {client, inboundIds} array — the
+// shape ImportClients and BulkCreateClients accept, so a panel round-trips.
+func (c *Client) ExportClients(ctx context.Context) (*Response, error) {
+	return c.Get(ctx, clientsBase+"export")
+}
+
+// ImportClients creates clients from an exported array. The panel takes the
+// array as a JSON *string* under "data", not as nested JSON.
+func (c *Client) ImportClients(ctx context.Context, data string) (*Response, error) {
+	return c.PostJSON(ctx, clientsBase+"import", map[string]any{"data": data})
+}
+
+// SetClientExternalLinks replaces a client's external links and subscriptions.
+// The panel swaps the whole set, so the caller sends every row it wants kept.
+func (c *Client) SetClientExternalLinks(ctx context.Context, email string, links any) (*Response, error) {
+	return c.PostJSON(ctx, clientsBase+url.PathEscape(email)+"/externalLinks", map[string]any{
+		"externalLinks": links,
+	})
+}

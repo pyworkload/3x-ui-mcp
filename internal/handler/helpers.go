@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/pyworkload/3x-ui-mcp/internal/xui"
@@ -67,6 +68,16 @@ var (
 	fetchesRemote = mcp.WithToolAnnotation(mcp.ToolAnnotation{
 		ReadOnlyHint:    mcp.ToBoolPtr(false),
 		DestructiveHint: mcp.ToBoolPtr(false),
+		IdempotentHint:  mcp.ToBoolPtr(false),
+		OpenWorldHint:   mcp.ToBoolPtr(true),
+	})
+
+	// managesRemote changes an account or credentials held at an external
+	// provider. Same hints as installsRemote — the distinction is what is being
+	// replaced, which is what a reader of the tool needs to know.
+	managesRemote = mcp.WithToolAnnotation(mcp.ToolAnnotation{
+		ReadOnlyHint:    mcp.ToBoolPtr(false),
+		DestructiveHint: mcp.ToBoolPtr(true),
 		IdempotentHint:  mcp.ToBoolPtr(false),
 		OpenWorldHint:   mcp.ToBoolPtr(true),
 	})
@@ -208,6 +219,39 @@ func summarizeLinks(raw json.RawMessage) string {
 	}
 	return fmt.Sprintf("%d connection links (%s).\nThe URLs carry client credentials and are linked below.",
 		len(links), strings.Join(parts, ", "))
+}
+
+// formatInt keeps form values free of the float formatting that comes with
+// JSON numbers arriving as float64.
+func formatInt(v int) string {
+	return strconv.Itoa(v)
+}
+
+// summarizeClientExport counts what an export holds. The rows carry UUIDs and
+// passwords, so the counts go in the answer and the credentials stay behind the
+// resource link.
+func summarizeClientExport(raw json.RawMessage) string {
+	var rows []struct {
+		Client struct {
+			Email string `json:"email"`
+		} `json:"client"`
+		InboundIDs []int `json:"inboundIds"`
+	}
+	if err := json.Unmarshal(raw, &rows); err != nil {
+		return "Could not summarize the export; read the linked resource for the full JSON."
+	}
+	if len(rows) == 0 {
+		return "No clients to export."
+	}
+
+	var attached int
+	for _, row := range rows {
+		if len(row.InboundIDs) > 0 {
+			attached++
+		}
+	}
+	return fmt.Sprintf("%d clients, %d of them attached to at least one inbound.\nThe export carries every UUID and password and is linked below.",
+		len(rows), attached)
 }
 
 // bytesPerGB converts the GB units used by MCP tool params to the bytes the panel stores.

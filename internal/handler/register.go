@@ -20,10 +20,20 @@ var toolsets = map[string]func(*server.MCPServer, *xui.Client){
 	"inbounds": registerInboundTools,
 	"clients":  registerClientTools,
 	"server":   registerServerTools,
-	"xray":     registerXrayTools,
 	"metrics":  registerMetricsTools,
 	"groups":   registerGroupTools,
 	"geodata":  registerGeodataTools,
+	"hosts":    registerHostTools,
+	"tokens":   registerAPITokenTools,
+	// The outbound providers reach Warp, NordVPN and PIA rather than the panel,
+	// so they are opt-out separately from the rest of the Xray tooling.
+	"providers": registerProviderTools,
+	// Subscription balancers ride with the Xray group: they are the client-side
+	// counterpart to the routing balancers already in there.
+	"xray": func(s *server.MCPServer, client *xui.Client) {
+		registerXrayTools(s, client)
+		registerSubBalancerTools(s, client)
+	},
 }
 
 // ToolsetNames lists the available groups in a stable order.

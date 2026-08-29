@@ -509,3 +509,144 @@ func TestBulkAdjustClients_OmitsEmptyFlow(t *testing.T) {
 		t.Errorf("addDays = %v, want 30", body["addDays"])
 	}
 }
+
+// --- Host group, subscription balancer, token and provider methods ---
+
+// Group IDs are opaque strings from the panel, so they have to survive the path.
+func TestUpdateHostGroup_EscapesGroupID(t *testing.T) {
+	client, rec := recordingClient(t)
+
+	if _, err := client.UpdateHostGroup(context.Background(), "grp/1 a", map[string]any{"remark": "cdn"}); err != nil {
+		t.Fatalf("UpdateHostGroup returned error: %v", err)
+	}
+
+	want := "/panel/api/hosts/update/grp%2F1%20a"
+	if rec.escapedPath != want {
+		t.Errorf("escaped path = %q, want %q", rec.escapedPath, want)
+	}
+	if !strings.Contains(rec.contentType, "application/json") {
+		t.Errorf("content type = %q, want JSON", rec.contentType)
+	}
+}
+
+// The sub-balancer routes are form-encoded with inboundIds repeated per value,
+// unlike every other write here — sending JSON silently loses the inbounds.
+func TestCreateSubBalancer_RepeatsInboundIdsInForm(t *testing.T) {
+	client, rec := recordingClient(t)
+	enabled := true
+
+	if _, err := client.CreateSubBalancer(context.Background(), "auto", "leastPing", []int{1, 3, 7}, 2, &enabled); err != nil {
+		t.Fatalf("CreateSubBalancer returned error: %v", err)
+	}
+
+	if !strings.HasPrefix(rec.contentType, "application/x-www-form-urlencoded") {
+		t.Fatalf("content type = %q, want form encoding", rec.contentType)
+	}
+	form, err := url.ParseQuery(rec.body)
+	if err != nil {
+		t.Fatalf("body is not a form: %v", err)
+	}
+	ids := form["inboundIds"]
+	if len(ids) != 3 || ids[0] != "1" || ids[2] != "7" {
+		t.Errorf("inboundIds = %v, want three repeated keys 1,3,7", ids)
+	}
+	if form.Get("strategy") != "leastPing" || form.Get("sortOrder") != "2" || form.Get("enabled") != "true" {
+		t.Errorf("form = %v, want strategy/sortOrder/enabled carried through", form)
+	}
+}
+
+// A nil enabled must leave the key out entirely: the panel keeps the stored
+// value only when the key is absent.
+func TestUpdateSubBalancer_OmitsEnabledWhenNil(t *testing.T) {
+	client, rec := recordingClient(t)
+
+	if _, err := client.UpdateSubBalancer(context.Background(), 4, "auto", "random", []int{2}, 1, nil); err != nil {
+		t.Fatalf("UpdateSubBalancer returned error: %v", err)
+	}
+
+	if rec.path != "/panel/api/sub-balancers/4" {
+		t.Errorf("path = %q, want %q", rec.path, "/panel/api/sub-balancers/4")
+	}
+	form, err := url.ParseQuery(rec.body)
+	if err != nil {
+		t.Fatalf("body is not a form: %v", err)
+	}
+	if _, present := form["enabled"]; present {
+		t.Errorf("form carries enabled = %q, want it omitted", form.Get("enabled"))
+	}
+}
+
+func TestCreateAPIToken_SendsScopeAndExpiry(t *testing.T) {
+	client, rec := recordingClient(t)
+
+	if _, err := client.CreateAPIToken(context.Background(), "mcp", "monitor", 1798761600000); err != nil {
+		t.Fatalf("CreateAPIToken returned error: %v", err)
+	}
+
+	var body map[string]any
+	if err := json.Unmarshal([]byte(rec.body), &body); err != nil {
+		t.Fatalf("body is not JSON: %v (%s)", err, rec.body)
+	}
+	if body["name"] != "mcp" || body["scope"] != "monitor" || body["expiresAt"] != float64(1798761600000) {
+		t.Errorf("body = %v, want name/scope/expiresAt carried through", body)
+	}
+}
+
+// delete and setEnabled fail closed on the panel unless the caller states the
+// stored scope, so it has to reach the request body.
+func TestDeleteAPIToken_CarriesExpectedScope(t *testing.T) {
+	client, rec := recordingClient(t)
+
+	if _, err := client.DeleteAPIToken(context.Background(), 3, "node-sync"); err != nil {
+		t.Fatalf("DeleteAPIToken returned error: %v", err)
+	}
+
+	if rec.path != "/panel/api/setting/apiTokens/delete/3" {
+		t.Errorf("path = %q, want %q", rec.path, "/panel/api/setting/apiTokens/delete/3")
+	}
+	var body map[string]any
+	if err := json.Unmarshal([]byte(rec.body), &body); err != nil {
+		t.Fatalf("body is not JSON: %v (%s)", err, rec.body)
+	}
+	if body["expectedScope"] != "node-sync" {
+		t.Errorf("expectedScope = %v, want node-sync", body["expectedScope"])
+	}
+}
+
+func TestWarpAction_PutsActionInPathAndArgsInForm(t *testing.T) {
+	client, rec := recordingClient(t)
+
+	if _, err := client.WarpAction(context.Background(), "license", url.Values{"license": {"abc123"}}); err != nil {
+		t.Fatalf("WarpAction returned error: %v", err)
+	}
+
+	if rec.path != "/panel/api/xray/warp/license" {
+		t.Errorf("path = %q, want %q", rec.path, "/panel/api/xray/warp/license")
+	}
+	form, err := url.ParseQuery(rec.body)
+	if err != nil {
+		t.Fatalf("body is not a form: %v", err)
+	}
+	if form.Get("license") != "abc123" {
+		t.Errorf("form = %v, want the license key", form)
+	}
+}
+
+// The panel takes the export as a JSON *string* under "data"; nesting it as
+// JSON would be rejected.
+func TestImportClients_SendsDataAsAString(t *testing.T) {
+	client, rec := recordingClient(t)
+	export := `[{"client":{"email":"alice"},"inboundIds":[7]}]`
+
+	if _, err := client.ImportClients(context.Background(), export); err != nil {
+		t.Fatalf("ImportClients returned error: %v", err)
+	}
+
+	var body map[string]any
+	if err := json.Unmarshal([]byte(rec.body), &body); err != nil {
+		t.Fatalf("body is not JSON: %v (%s)", err, rec.body)
+	}
+	if got, ok := body["data"].(string); !ok || got != export {
+		t.Errorf("data = %#v, want the export as a string", body["data"])
+	}
+}

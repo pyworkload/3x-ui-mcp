@@ -24,6 +24,7 @@ const (
 	xrayTemplateURI        = "xui://xray/template"
 	inboundsURI            = "xui://inbounds"
 	inboundLinksURI        = "xui://inbounds/links"
+	clientsExportURI       = "xui://clients/export"
 )
 
 // resourceHandler holds the XUI client for resource reads.
@@ -70,6 +71,13 @@ func registerResources(s *server.MCPServer, client *xui.Client) {
 		mcp.WithMIMEType("application/json"),
 	), h.jsonResource(inboundLinksURI, func(ctx context.Context) (*xui.Response, error) {
 		return h.client.GetAllInboundLinks(ctx)
+	}))
+
+	s.AddResource(mcp.NewResource(clientsExportURI, "Client export",
+		mcp.WithResourceDescription("Every client as a {client, inboundIds} array — the shape import_clients accepts. Includes credentials."),
+		mcp.WithMIMEType("application/json"),
+	), h.jsonResource(clientsExportURI, func(ctx context.Context) (*xui.Response, error) {
+		return h.client.ExportClients(ctx)
 	}))
 
 	s.AddResourceTemplate(mcp.NewResourceTemplate("xui://inbound/{id}", "Inbound by ID",
