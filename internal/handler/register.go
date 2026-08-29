@@ -24,6 +24,7 @@ var toolsets = map[string]func(*server.MCPServer, *xui.Client){
 	"groups":   registerGroupTools,
 	"geodata":  registerGeodataTools,
 	"hosts":    registerHostTools,
+	"nodes":    registerNodeTools,
 	"tokens":   registerAPITokenTools,
 	// The outbound providers reach Warp, NordVPN and PIA rather than the panel,
 	// so they are opt-out separately from the rest of the Xray tooling.

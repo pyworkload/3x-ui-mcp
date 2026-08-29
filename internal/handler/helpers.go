@@ -72,6 +72,16 @@ var (
 		OpenWorldHint:   mcp.ToBoolPtr(true),
 	})
 
+	// updatesRemote overwrites a record in place, but reaches the host it
+	// describes to check the change — a node update, where the panel probes the
+	// node before saving.
+	updatesRemote = mcp.WithToolAnnotation(mcp.ToolAnnotation{
+		ReadOnlyHint:    mcp.ToBoolPtr(false),
+		DestructiveHint: mcp.ToBoolPtr(false),
+		IdempotentHint:  mcp.ToBoolPtr(true),
+		OpenWorldHint:   mcp.ToBoolPtr(true),
+	})
+
 	// managesRemote changes an account or credentials held at an external
 	// provider. Same hints as installsRemote — the distinction is what is being
 	// replaced, which is what a reader of the tool needs to know.
