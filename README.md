@@ -8,7 +8,7 @@ MCP (Model Context Protocol) server for [3x-ui](https://github.com/MHSanaei/3x-u
 
 ## Features
 
-- 65 MCP tools for inbounds, clients, routing, balancers and the Xray service (3x-ui v3.3.0+ — see [Panel versions](#panel-versions))
+- 96 MCP tools for inbounds, clients, groups, routing, balancers, geodata, metrics and the Xray service (3x-ui v3.3.0+ — see [Panel versions](#panel-versions))
 - Two auth modes: session login with CSRF, or a Bearer API token (`XUI_API_TOKEN`)
 - Automatic session management with transparent re-authentication and CSRF refresh
 - Email-keyed client model: attach/detach across inbounds, bulk operations, paged listing
@@ -108,12 +108,16 @@ version listed:
 |---|---|
 | `get_balancers`, `set_balancer_override`, `test_route` | v3.3.1 |
 | `scan_reality_target`, `scan_reality_targets`, `get_all_inbound_links` | v3.4.2 |
+| Observability, client groups, bulk client state, inbound projections and fallbacks | v3.5.0 |
+| Geodata, HWID devices, `get_clients_by_telegram_id`, `set_inbound_sub_sort_index` | v3.7.0 |
 
-Tested against **v3.7.0**, the current panel release. v3.5.0 through v3.7.0 kept
-every route this server calls, so the tools below work unchanged. Those releases
-also grew API surface that is not wrapped here yet: nodes, host groups, client
-groups, scoped API tokens, geodata browsing, HWID devices, and the metrics and
-observatory history endpoints.
+The last two rows are bounded by the panel's own generated `openapi.json`, which
+only starts at v3.5.0 — some of those routes may predate it.
+
+Tested against **v3.7.0**, the current panel release: every tool here was run
+against a live v3.7.0 panel. Not wrapped yet: nodes, host groups, API token
+management, subscription balancers, the WARP/Nord/PIA outbound helpers, and
+client export/import.
 
 ## MCP Tools
 
@@ -122,7 +126,7 @@ destructive, or service-interrupting — and with whether it reaches a host outs
 the panel. MCP clients use those hints to auto-approve safe calls and to ask
 before the rest.
 
-### Inbound Management (10 tools)
+### Inbound Management (15 tools)
 
 | Tool | Description |
 |---|---|
@@ -136,8 +140,13 @@ before the rest.
 | `delete_all_inbound_clients` | Remove every client from an inbound, keeping the inbound |
 | `bulk_delete_inbounds` | Delete several inbounds in one call |
 | `get_all_inbound_links` | Connection URLs for every client across every inbound |
+| `list_inbounds_slim` | Inbounds with client arrays trimmed — the cheap listing for large panels |
+| `get_inbound_options` | Picker projection: id, remark, tag, protocol, port, capability flags |
+| `get_inbound_fallbacks` | Fallback rules on a master VLESS/Trojan TCP-TLS inbound |
+| `set_inbound_fallbacks` | Replace the whole fallback list (restarts Xray) |
+| `set_inbound_sub_sort_index` | Set an inbound's position in subscription output |
 
-### Client Management (21 tools)
+### Client Management (29 tools)
 
 Clients are email-keyed entities that can be attached to several inbounds at once.
 
@@ -164,6 +173,14 @@ Clients are email-keyed entities that can be attached to several inbounds at onc
 | `get_last_online` | Last-online timestamp for every client |
 | `update_client_traffic` | Set specific upload/download byte counters for a client |
 | `get_subscription_links` | Connection URLs served under a subscription ID, as JSON |
+| `get_clients_by_telegram_id` | Find clients by Telegram user ID |
+| `list_client_devices` | HWID devices registered for a client |
+| `delete_client_device` | Remove one registered device, freeing an HWID slot |
+| `clear_client_devices` | Drop every registered device for a client |
+| `bulk_enable_clients` | Enable many clients, one rewrite per owning inbound |
+| `bulk_disable_clients` | Disable many clients, one rewrite per owning inbound |
+| `bulk_adjust_clients` | Shift expiry and quota for many clients — the bulk renewal |
+| `delete_orphan_clients` | Delete clients attached to no inbound, with their records |
 
 ### Server Management (14 tools)
 
@@ -208,6 +225,46 @@ Clients are email-keyed entities that can be attached to several inbounds at onc
 | `refresh_outbound_sub` | Re-fetch a subscription now and return its outbounds |
 | `move_outbound_sub` | Move a subscription up/down in priority |
 | `delete_outbound_sub` | Delete an outbound subscription |
+
+### Client Groups (8 tools)
+
+A group is a label carried both by the client record and by every owning
+inbound's settings; the panel keeps the two in step in one transaction.
+
+| Tool | Description |
+|---|---|
+| `list_client_groups` | Every group with its member count, including empty ones |
+| `get_client_group_emails` | Emails in one group — the input for a bulk action |
+| `create_client_group` | Create an empty, selectable group |
+| `rename_client_group` | Rename a group and repoint every member |
+| `delete_client_group` | Drop a group, keeping its clients |
+| `add_clients_to_group` | Label many clients with one group |
+| `remove_clients_from_group` | Clear the group label on many clients |
+| `reset_client_group_traffic` | Zero the group counter, leaving per-client counters running |
+
+### Observability (6 tools)
+
+| Tool | Description |
+|---|---|
+| `get_metrics_history` | Time-series for one host metric (cpu, mem, netUp/Down, online, load) |
+| `get_xray_metrics` | Xray runtime metrics state and current expvar values |
+| `get_xray_metrics_history` | Time-series for one Xray runtime metric |
+| `get_xray_observatory` | Latest per-outbound latency and health snapshot |
+| `get_xray_observatory_history` | Probe results over time for one outbound tag |
+| `get_panel_update_info` | Whether a newer 3x-ui release is out |
+
+The history tools take a `bucket` in seconds and always return 60 samples, so
+the bucket picks the window too: 2 (2m), 30 (30m), 60 (1h), 180 (3h), 360 (6h),
+720 (12h), 1440 (24h), 2880 (2d), 10080 (7d).
+
+### Geodata (4 tools)
+
+| Tool | Description |
+|---|---|
+| `list_geodata_files` | Geo databases in Xray's asset folder, with layout and category count |
+| `list_geodata_categories` | Categories in one database, with entry counts and attributes |
+| `list_geodata_entries` | The rules inside a category — typed domains or CIDRs |
+| `validate_geodata_tokens` | Report routing tokens that do not resolve, with a reason |
 
 ## Architecture
 
