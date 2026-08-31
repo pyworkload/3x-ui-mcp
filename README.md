@@ -2,9 +2,25 @@
 
 [![CI](https://github.com/pyworkload/3x-ui-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/pyworkload/3x-ui-mcp/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/pyworkload/3x-ui-mcp)](https://github.com/pyworkload/3x-ui-mcp/releases/latest)
+[![Go Reference](https://pkg.go.dev/badge/github.com/pyworkload/3x-ui-mcp.svg)](https://pkg.go.dev/github.com/pyworkload/3x-ui-mcp)
+[![Go Report Card](https://goreportcard.com/badge/github.com/pyworkload/3x-ui-mcp)](https://goreportcard.com/report/github.com/pyworkload/3x-ui-mcp)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 MCP (Model Context Protocol) server for [3x-ui](https://github.com/MHSanaei/3x-ui) — an Xray/V2Ray proxy management panel. Exposes the 3x-ui HTTP API as MCP tools so LLMs can manage inbounds, clients, routing rules, Xray service, and server settings.
+
+## Contents
+
+- [Features](#features)
+- [Quick start](#quick-start)
+- [Example prompts](#example-prompts)
+- [Agent skills](#agent-skills)
+- [Configuration](#configuration)
+- [Panel versions](#panel-versions)
+- [MCP Tools](#mcp-tools)
+- [Resources](#resources)
+- [Architecture](#architecture)
+- [Development](#development)
+- [License](#license)
 
 ## Features
 
@@ -18,9 +34,25 @@ MCP (Model Context Protocol) server for [3x-ui](https://github.com/MHSanaei/3x-u
 - Stdio transport for seamless LLM integration
 - Zero external dependencies beyond the MCP SDK
 
-## Usage
+## Quick start
 
-Add to your MCP config (`claude_desktop_config.json` or `.mcp.json`):
+Requires [Go 1.23+](https://go.dev/dl/): the `go run …@latest` form downloads and
+compiles on first use, then runs from cache. No Go toolchain? Use a
+[pre-built binary](#pre-built-binary) instead.
+
+### Claude Code
+
+```bash
+claude mcp add 3x-ui \
+  --env XUI_HOST=http://localhost:2053 \
+  --env XUI_USERNAME=admin \
+  --env XUI_PASSWORD=your-password \
+  -- go run github.com/pyworkload/3x-ui-mcp/cmd/xui-mcp@latest
+```
+
+### Claude Desktop / Cursor
+
+Add to `claude_desktop_config.json` (Claude Desktop) or `.cursor/mcp.json` (Cursor):
 
 ```json
 {
@@ -38,11 +70,31 @@ Add to your MCP config (`claude_desktop_config.json` or `.mcp.json`):
 }
 ```
 
-Requires [Go 1.23+](https://go.dev/dl/). First run downloads and compiles automatically, subsequent runs use cache.
+### VS Code
 
-### With pre-built binary
+Add to `.vscode/mcp.json`:
 
-Download from [Releases](https://github.com/pyworkload/3x-ui-mcp/releases), then:
+```json
+{
+  "servers": {
+    "3x-ui": {
+      "type": "stdio",
+      "command": "go",
+      "args": ["run", "github.com/pyworkload/3x-ui-mcp/cmd/xui-mcp@latest"],
+      "env": {
+        "XUI_HOST": "http://localhost:2053",
+        "XUI_USERNAME": "admin",
+        "XUI_PASSWORD": "your-password"
+      }
+    }
+  }
+}
+```
+
+### Pre-built binary
+
+Download from [Releases](https://github.com/pyworkload/3x-ui-mcp/releases), then point
+`command` at the binary in any of the configs above:
 
 ```json
 {
@@ -57,6 +109,39 @@ Download from [Releases](https://github.com/pyworkload/3x-ui-mcp/releases), then
     }
   }
 }
+```
+
+## Example prompts
+
+Once connected, ask your agent things like:
+
+- *"Create 20 trial clients on inbound 3 with 10 GB and a 7-day expiry, and give me their subscription links."*
+- *"Which clients are past 90% of their quota? Extend them all by 30 days and 50 GB."*
+- *"Scan 104.16.0.0/24 for usable REALITY targets and put the fastest one on my VLESS inbound."*
+- *"Register a Warp account and route `*.netflix.com` through it."*
+- *"Nobody can connect — check the Xray logs, the panel logs, and when each client was last online."*
+- *"Which node is serving the most online clients right now, and how loaded is it?"*
+- *"Back up the database to Telegram, then run the panel self-update on every node."*
+
+## Agent skills
+
+[`skills/`](skills/) holds seven procedures for the jobs people actually bring to a
+panel — they encode operating knowledge the tool schemas cannot carry: what order
+to do things in, and what the panel will not warn you about.
+
+| Skill | Covers |
+|---|---|
+| [`reality-inbound`](skills/reality-inbound/SKILL.md) | Choosing and verifying a REALITY camouflage target, keys, shortIds, repairing a burnt inbound |
+| [`diagnose-connectivity`](skills/diagnose-connectivity/SKILL.md) | Why a client cannot connect, cheapest cause first, with core error strings mapped to causes |
+| [`panel-hardening`](skills/panel-hardening/SKILL.md) | Scoped tokens instead of admin passwords, rotation, fail2ban, cert pinning, backups |
+| [`cdn-fallback`](skills/cdn-fallback/SKILL.md) | WebSocket/gRPC/xhttp behind a CDN, and sharing port 443 through fallbacks |
+| [`client-lifecycle`](skills/client-lifecycle/SKILL.md) | Onboarding, subscription links, bulk renewals, reports, cleanup |
+| [`smart-routing`](skills/smart-routing/SKILL.md) | Split routing by domain and geo token, provider outbounds, verifying rules with `test_route` |
+| [`multi-node`](skills/multi-node/SKILL.md) | Adding nodes, TLS trust modes and mTLS, selective sync, cluster monitoring |
+
+```bash
+cp -r skills/* ~/.claude/skills/     # Claude Code, everywhere
+cp -r skills/* .claude/skills/       # this project only
 ```
 
 ## Configuration
@@ -130,9 +215,7 @@ The last two rows are bounded by the panel's own generated `openapi.json`, which
 only starts at v3.5.0 — some of those routes may predate it.
 
 Tested against **v3.7.0**, the current panel release: every tool here was run
-against a live v3.7.0 panel. Not wrapped yet: nodes, host groups, API token
-management, subscription balancers, the WARP/Nord/PIA outbound helpers, and
-client export/import.
+against a live v3.7.0 panel.
 
 ## MCP Tools
 
@@ -141,7 +224,10 @@ destructive, or service-interrupting — and with whether it reaches a host outs
 the panel. MCP clients use those hints to auto-approve safe calls and to ask
 before the rest.
 
-### Inbound Management (15 tools)
+### Inbound Management
+
+<details>
+<summary><b>15 tools</b> — CRUD, enable toggle, traffic reset, fallbacks, bulk delete, links</summary>
 
 | Tool | Description |
 |---|---|
@@ -161,9 +247,14 @@ before the rest.
 | `set_inbound_fallbacks` | Replace the whole fallback list (restarts Xray) |
 | `set_inbound_sub_sort_index` | Set an inbound's position in subscription output |
 
-### Client Management (38 tools)
+</details>
+
+### Client Management
 
 Clients are email-keyed entities that can be attached to several inbounds at once.
+
+<details>
+<summary><b>38 tools</b> — CRUD by email, attach/detach, bulk operations, traffic, devices, online state</summary>
 
 | Tool | Description |
 |---|---|
@@ -206,7 +297,12 @@ Clients are email-keyed entities that can be attached to several inbounds at onc
 | `get_online_clients_by_node` | Online clients grouped by the node serving them |
 | `get_client_ips_by_node` | Per-client source IPs grouped by the node that saw them |
 
-### Server Management (14 tools)
+</details>
+
+### Server Management
+
+<details>
+<summary><b>14 tools</b> — status, logs, Xray service control, key generation, REALITY scans</summary>
 
 | Tool | Description |
 |---|---|
@@ -225,7 +321,12 @@ Clients are email-keyed entities that can be attached to several inbounds at onc
 | `scan_reality_target` | Probe one REALITY candidate and report whether it is usable |
 | `scan_reality_targets` | Probe domains, IPs or CIDR ranges, ranked by feasibility and latency |
 
-### Xray Configuration (21 tools)
+</details>
+
+### Xray Configuration
+
+<details>
+<summary><b>21 tools</b> — template, routing rules, outbounds, balancers, outbound subscriptions</summary>
 
 | Tool | Description |
 |---|---|
@@ -250,11 +351,16 @@ Clients are email-keyed entities that can be attached to several inbounds at onc
 | `move_outbound_sub` | Move a subscription up/down in priority |
 | `delete_outbound_sub` | Delete an outbound subscription |
 
-### Host Groups (11 tools)
+</details>
+
+### Host Groups
 
 A host group publishes one or more inbounds under external addresses — a CDN
 hostname, a second port, a different SNI — and the panel renders subscription
 links against them. Groups are addressed by a string `group_id`.
+
+<details>
+<summary><b>11 tools</b> — CRUD, ordering, bulk state</summary>
 
 | Tool | Description |
 |---|---|
@@ -270,16 +376,21 @@ links against them. Groups are addressed by a string `group_id`.
 | `bulk_delete_host_groups` | Delete several groups at once |
 | `bulk_set_host_groups_enable` | Flip several groups at once |
 
+</details>
+
 `add_host_group` and `update_host_group` expose the fields a group is normally
 built from; `raw_json` sends a complete HostGroup for the rest (mux, sockopt,
 ECH, final mask).
 
-### Subscription Balancers (4 tools)
+### Subscription Balancers
 
 Client-side balancers: each appears in the JSON subscription of every client on
 one of its inbounds, and the client app picks a server by the strategy. Not to
 be confused with `get_balancers`, which reports the routing balancers running
 inside Xray.
+
+<details>
+<summary><b>4 tools</b> — CRUD in sort order</summary>
 
 | Tool | Description |
 |---|---|
@@ -288,7 +399,12 @@ inside Xray.
 | `update_sub_balancer` | Update one, keeping the fields you omit |
 | `delete_sub_balancer` | Remove one |
 
-### API Tokens (4 tools)
+</details>
+
+### API Tokens
+
+<details>
+<summary><b>4 tools</b> — mint, disable, delete</summary>
 
 | Tool | Description |
 |---|---|
@@ -297,14 +413,19 @@ inside Xray.
 | `set_api_token_enabled` | Disable or re-enable a token without deleting it |
 | `delete_api_token` | Delete a token permanently |
 
+</details>
+
 `delete_api_token` and `set_api_token_enabled` take the token's stored `scope`;
 the panel fails closed unless it matches, so a token cannot be flipped by
 guessing its ID.
 
-### Outbound Providers (6 tools)
+### Outbound Providers
 
 Cloudflare Warp, NordVPN and PIA each get a read tool and a write tool, so
 querying a country list is annotated differently from erasing credentials.
+
+<details>
+<summary><b>6 tools</b> — a read and a write tool per provider</summary>
 
 | Tool | Description |
 |---|---|
@@ -315,7 +436,12 @@ querying a country list is annotated differently from erasing credentials.
 | `get_pia_data` | Regions, servers in a region, or the stored account |
 | `manage_pia` | Log in, register a key against a server, or erase |
 
-### Panel Maintenance (19 tools)
+</details>
+
+### Panel Maintenance
+
+<details>
+<summary><b>19 tools</b> — health, certificates, geo files, self-update, backups, integration tests</summary>
 
 | Tool | Description |
 |---|---|
@@ -339,15 +465,20 @@ querying a country list is annotated differently from erasing credentials.
 | `get_factory_defaults` | The shipped default per setting key |
 | `update_admin_credentials` | Change the panel admin username and password |
 
+</details>
+
 `update_admin_credentials` invalidates the credentials this server itself uses:
 update `XUI_USERNAME` / `XUI_PASSWORD` and restart it afterwards, or switch to
 an API token first.
 
-### Multi-Node (16 tools)
+### Multi-Node
 
 A node is another 3x-ui panel this one drives: inbounds and clients are pushed
 to it and its traffic is pulled back. Most of these calls reach the node itself,
 not just this panel.
+
+<details>
+<summary><b>16 tools</b> — CRUD, probing, mTLS, node panel updates</summary>
 
 | Tool | Description |
 |---|---|
@@ -368,14 +499,19 @@ not just this panel.
 | `reload_node_mtls_client` | Apply a rotated client certificate without a restart |
 | `update_node_panels` | Run the 3x-ui self-updater on the given nodes |
 
+</details>
+
 The node API token is write-only from v3.6.0: the panel reports only whether one
 is set, so `update_node` omits it unless you pass a new one, and `clear_api_token`
 is how a node moved to mTLS drops the old token.
 
-### Client Groups (8 tools)
+### Client Groups
 
 A group is a label carried both by the client record and by every owning
 inbound's settings; the panel keeps the two in step in one transaction.
+
+<details>
+<summary><b>8 tools</b> — CRUD and bulk membership</summary>
 
 | Tool | Description |
 |---|---|
@@ -388,7 +524,12 @@ inbound's settings; the panel keeps the two in step in one transaction.
 | `remove_clients_from_group` | Clear the group label on many clients |
 | `reset_client_group_traffic` | Zero the group counter, leaving per-client counters running |
 
-### Observability (6 tools)
+</details>
+
+### Observability
+
+<details>
+<summary><b>6 tools</b> — metric history, observatory, update check</summary>
 
 | Tool | Description |
 |---|---|
@@ -399,11 +540,16 @@ inbound's settings; the panel keeps the two in step in one transaction.
 | `get_xray_observatory_history` | Probe results over time for one outbound tag |
 | `get_panel_update_info` | Whether a newer 3x-ui release is out |
 
+</details>
+
 The history tools take a `bucket` in seconds and always return 60 samples, so
 the bucket picks the window too: 2 (2m), 30 (30m), 60 (1h), 180 (3h), 360 (6h),
 720 (12h), 1440 (24h), 2880 (2d), 10080 (7d).
 
-### Geodata (4 tools)
+### Geodata
+
+<details>
+<summary><b>4 tools</b> — browse geo databases, validate routing tokens</summary>
 
 | Tool | Description |
 |---|---|
@@ -411,6 +557,8 @@ the bucket picks the window too: 2 (2m), 30 (30m), 60 (1h), 180 (3h), 360 (6h),
 | `list_geodata_categories` | Categories in one database, with entry counts and attributes |
 | `list_geodata_entries` | The rules inside a category — typed domains or CIDRs |
 | `validate_geodata_tokens` | Report routing tokens that do not resolve, with a reason |
+
+</details>
 
 **Deliberately not wrapped:** `server/getDb`, `server/getMigration` and
 `server/importDB` move database files as attachments and multipart uploads
