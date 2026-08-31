@@ -2,6 +2,8 @@
 
 [![CI](https://github.com/pyworkload/3x-ui-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/pyworkload/3x-ui-mcp/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/pyworkload/3x-ui-mcp)](https://github.com/pyworkload/3x-ui-mcp/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/pyworkload/3x-ui-mcp/total.svg)](https://github.com/pyworkload/3x-ui-mcp/releases/latest)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/pyworkload/3x-ui-mcp.svg)](go.mod)
 [![Go Reference](https://pkg.go.dev/badge/github.com/pyworkload/3x-ui-mcp.svg)](https://pkg.go.dev/github.com/pyworkload/3x-ui-mcp)
 [![Go Report Card](https://goreportcard.com/badge/github.com/pyworkload/3x-ui-mcp)](https://goreportcard.com/report/github.com/pyworkload/3x-ui-mcp)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -24,15 +26,20 @@ MCP (Model Context Protocol) server for [3x-ui](https://github.com/MHSanaei/3x-u
 
 ## Features
 
-- 166 MCP tools covering essentially the whole 3x-ui API: inbounds, clients, groups, hosts, nodes, routing, balancers, geodata, metrics, tokens, panel maintenance (3x-ui v3.3.0+ — see [Panel versions](#panel-versions))
-- Two auth modes: session login with CSRF, or a Bearer API token (`XUI_API_TOKEN`)
-- Automatic session management with transparent re-authentication and CSRF refresh
-- Email-keyed client model: attach/detach across inbounds, bulk operations, paged listing
-- Annotated tools: a client can tell a read-only call from a destructive one before running it
-- Lazy by default: bulky payloads come back as a summary plus a `resource_link`, fetched only if needed
-- `XUI_TOOLSETS` narrows which tool groups load, cutting the context they occupy
-- Stdio transport for seamless LLM integration
-- Zero external dependencies beyond the MCP SDK
+- **The whole panel API** — 166 tools across inbounds, clients, groups, hosts, nodes, routing, balancers, geodata, metrics, tokens and maintenance. Everything 3x-ui exposes except four file-transfer and node-sync routes (3x-ui v3.3.0+ — see [Panel versions](#panel-versions)).
+- **Two auth modes** — session login with CSRF, or a Bearer API token (`XUI_API_TOKEN`), with transparent re-authentication and CSRF refresh when either goes stale.
+- **Email-keyed clients** — one client attaches to several inbounds; bulk create, adjust, enable and delete, plus server-side paging over large panels.
+- **Annotated tools** — every tool declares its effect, so an MCP client can tell a read-only call from a destructive one before running it.
+- **Lazy by default** — bulky payloads answer with a summary plus a `resource_link`, fetched only when something actually needs the document.
+- **Context-budgeted** — `XUI_TOOLSETS` loads only the tool groups you name, cutting what the schemas occupy in every session.
+- **Agent skills included** — seven procedures for the real jobs, verified against the Xray-core and 3x-ui sources (see [Agent skills](#agent-skills)).
+- **Stdio transport**, and zero external dependencies beyond the MCP SDK.
+
+> [!IMPORTANT]
+> These tools drive a live proxy panel. The ones annotated destructive delete
+> clients, zero traffic counters, or restart Xray and drop every connection —
+> several act panel-wide with no undo. Give an agent an API token scoped to what
+> it should reach, and take a backup before bulk operations.
 
 ## Quick start
 
