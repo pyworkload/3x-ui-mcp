@@ -5,7 +5,6 @@
 [![Downloads](https://img.shields.io/github/downloads/pyworkload/3x-ui-mcp/total.svg)](https://github.com/pyworkload/3x-ui-mcp/releases/latest)
 [![Go Version](https://img.shields.io/github/go-mod/go-version/pyworkload/3x-ui-mcp.svg)](go.mod)
 [![Go Reference](https://pkg.go.dev/badge/github.com/pyworkload/3x-ui-mcp.svg)](https://pkg.go.dev/github.com/pyworkload/3x-ui-mcp)
-[![Go Report Card](https://goreportcard.com/badge/github.com/pyworkload/3x-ui-mcp)](https://goreportcard.com/report/github.com/pyworkload/3x-ui-mcp)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 MCP (Model Context Protocol) server for [3x-ui](https://github.com/MHSanaei/3x-ui) — an Xray/V2Ray proxy management panel. Exposes the 3x-ui HTTP API as MCP tools so LLMs can manage inbounds, clients, routing rules, Xray service, and server settings.
