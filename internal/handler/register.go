@@ -12,7 +12,7 @@ import (
 
 // toolsets maps a group name to the tools it registers.
 //
-// All 96 tool schemas together cost roughly 14k tokens of context in every
+// All 166 tool schemas together cost roughly 28k tokens of context in every
 // session, whether or not the caller ever touches them. XUI_TOOLSETS narrows
 // that: a deployment that only hands out keys can load "clients" and skip the
 // Xray template, geodata and metrics tools entirely.
