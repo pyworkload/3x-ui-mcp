@@ -21,6 +21,7 @@ MCP (Model Context Protocol) server for [3x-ui](https://github.com/MHSanaei/3x-u
 - [Resources](#resources)
 - [Architecture](#architecture)
 - [Development](#development)
+- [Contributing](#contributing)
 - [License](#license)
 
 ## Features
@@ -607,6 +608,14 @@ make lint       # Run golangci-lint (config in .golangci.yml)
 make fmt        # Format code
 make build      # Build binary
 ```
+
+## Contributing
+
+Bug reports, panel-version findings and pull requests are all welcome — see
+[CONTRIBUTING.md](CONTRIBUTING.md) for the setup, the checks CI runs, and the
+panel conventions a new tool has to follow.
+Participation is covered by the [Code of Conduct](CODE_OF_CONDUCT.md); for a
+vulnerability, follow [SECURITY.md](SECURITY.md) rather than opening an issue.
 
 ## License
 

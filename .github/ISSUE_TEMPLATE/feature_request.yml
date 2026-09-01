@@ -1,0 +1,31 @@
+name: Feature request
+description: A missing tool, a panel endpoint that is not covered, or an improvement
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What you are trying to do
+      description: The panel task you want an agent to perform, and where the current tools fall short.
+    validations:
+      required: true
+
+  - type: input
+    id: endpoint
+    attributes:
+      label: Panel endpoint
+      description: If you know which route covers it, name it — that is most of the work.
+      placeholder: POST /panel/api/inbounds/...
+
+  - type: input
+    id: panel-version
+    attributes:
+      label: Panel version that has it
+      description: Endpoint availability drifts by version; say which panel you checked against.
+      placeholder: v3.7.0
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything else
+      description: Sample request/response, panel UI screenshot, or how you work around it today.
