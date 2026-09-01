@@ -1,5 +1,5 @@
 {
-  "name": "3x-ui-mcp",
+  "name": "@pyworkload/3x-ui-mcp",
   "version": "0.0.0-dev",
   "description": "MCP server for the 3x-ui Xray/V2Ray proxy panel: manage inbounds, clients, routing, nodes and Xray itself from an LLM agent.",
   "keywords": [
@@ -40,5 +40,8 @@
     "@pyworkload/3x-ui-mcp-linux-x64": "0.0.0-dev",
     "@pyworkload/3x-ui-mcp-win32-arm64": "0.0.0-dev",
     "@pyworkload/3x-ui-mcp-win32-x64": "0.0.0-dev"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
