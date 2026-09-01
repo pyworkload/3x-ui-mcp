@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 3x-ui panel bug
+    url: https://github.com/MHSanaei/3x-ui/issues
+    about: Problems with the panel itself — this project only calls its HTTP API.
+  - name: Security vulnerability
+    url: https://github.com/pyworkload/3x-ui-mcp/security/advisories/new
+    about: Report privately instead of opening a public issue.
+  - name: Panel version support
+    url: https://github.com/pyworkload/3x-ui-mcp#panel-versions
+    about: Which endpoints need which 3x-ui version, before filing a 404 as a bug.

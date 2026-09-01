@@ -1,0 +1,79 @@
+name: Bug report
+description: A tool fails, returns the wrong thing, or the server misbehaves
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please redact panel hostnames, passwords, API tokens, client UUIDs and
+        emails before pasting anything below.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you asked for, what the tool did, and what you expected instead.
+    validations:
+      required: true
+
+  - type: input
+    id: tool
+    attributes:
+      label: Tool
+      description: Which MCP tool, and the parameters you passed.
+      placeholder: update_client — email=alice, total_gb=50
+    validations:
+      required: true
+
+  - type: textarea
+    id: panel-response
+    attributes:
+      label: Panel response
+      description: The raw JSON the panel returned, or the error the tool reported.
+      render: json
+
+  - type: input
+    id: panel-version
+    attributes:
+      label: 3x-ui panel version
+      placeholder: v3.7.0
+    validations:
+      required: true
+
+  - type: input
+    id: server-version
+    attributes:
+      label: Server version
+      description: Logged at startup ("starting 3x-ui MCP server ... version=").
+      placeholder: v0.4.2
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install
+    attributes:
+      label: How it is running
+      options:
+        - npx
+        - go run ...@latest
+        - release binary
+        - built from source
+    validations:
+      required: true
+
+  - type: dropdown
+    id: auth
+    attributes:
+      label: Auth mode
+      options:
+        - username + password (session + CSRF)
+        - XUI_API_TOKEN (Bearer)
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Debug log
+      description: Output with XUI_LOG_LEVEL=debug, if the failure looks like it is in the HTTP layer.
+      render: shell
