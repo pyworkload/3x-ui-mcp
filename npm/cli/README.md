@@ -1,4 +1,4 @@
-# 3x-ui MCP Server
+# @pyworkload/3x-ui-mcp
 
 MCP (Model Context Protocol) server for [3x-ui](https://github.com/MHSanaei/3x-ui) —
 an Xray/V2Ray proxy management panel. It exposes the panel's HTTP API as 166 MCP
@@ -15,7 +15,7 @@ downloaded at install time. The Go toolchain is not required.
   "mcpServers": {
     "3x-ui": {
       "command": "npx",
-      "args": ["-y", "3x-ui-mcp"],
+      "args": ["-y", "@pyworkload/3x-ui-mcp"],
       "env": {
         "XUI_HOST": "http://localhost:2053",
         "XUI_USERNAME": "admin",
@@ -33,7 +33,7 @@ claude mcp add 3x-ui \
   --env XUI_HOST=http://localhost:2053 \
   --env XUI_USERNAME=admin \
   --env XUI_PASSWORD=your-password \
-  -- npx -y 3x-ui-mcp
+  -- npx -y @pyworkload/3x-ui-mcp
 ```
 
 Provide either `XUI_USERNAME` + `XUI_PASSWORD` or `XUI_API_TOKEN`. Optional:

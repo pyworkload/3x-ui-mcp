@@ -54,7 +54,7 @@ claude mcp add 3x-ui \
   --env XUI_HOST=http://localhost:2053 \
   --env XUI_USERNAME=admin \
   --env XUI_PASSWORD=your-password \
-  -- npx -y 3x-ui-mcp
+  -- npx -y @pyworkload/3x-ui-mcp
 ```
 
 ### Claude Desktop / Cursor
@@ -66,7 +66,7 @@ Add to `claude_desktop_config.json` (Claude Desktop) or `.cursor/mcp.json` (Curs
   "mcpServers": {
     "3x-ui": {
       "command": "npx",
-      "args": ["-y", "3x-ui-mcp"],
+      "args": ["-y", "@pyworkload/3x-ui-mcp"],
       "env": {
         "XUI_HOST": "http://localhost:2053",
         "XUI_USERNAME": "admin",
@@ -87,7 +87,7 @@ Add to `.vscode/mcp.json`:
     "3x-ui": {
       "type": "stdio",
       "command": "npx",
-      "args": ["-y", "3x-ui-mcp"],
+      "args": ["-y", "@pyworkload/3x-ui-mcp"],
       "env": {
         "XUI_HOST": "http://localhost:2053",
         "XUI_USERNAME": "admin",
@@ -109,7 +109,7 @@ Swap `command` and `args` in any of the configs above:
 | Installed globally | `xui-mcp` | — |
 
 `go run …@latest` compiles on first use and runs from cache afterwards.
-`npm install -g 3x-ui-mcp` puts `xui-mcp` on the PATH if you would rather not go
+`npm install -g @pyworkload/3x-ui-mcp` puts `xui-mcp` on the PATH if you would rather not go
 through `npx` each time.
 
 ## Example prompts
