@@ -1,0 +1,44 @@
+{
+  "name": "3x-ui-mcp",
+  "version": "0.0.0-dev",
+  "description": "MCP server for the 3x-ui Xray/V2Ray proxy panel: manage inbounds, clients, routing, nodes and Xray itself from an LLM agent.",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "3x-ui",
+    "xray",
+    "v2ray",
+    "vless",
+    "reality",
+    "proxy",
+    "vpn"
+  ],
+  "homepage": "https://github.com/pyworkload/3x-ui-mcp#readme",
+  "bugs": "https://github.com/pyworkload/3x-ui-mcp/issues",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pyworkload/3x-ui-mcp.git"
+  },
+  "license": "MIT",
+  "author": "pyworkload",
+  "type": "commonjs",
+  "bin": {
+    "3x-ui-mcp": "bin/xui-mcp.js",
+    "xui-mcp": "bin/xui-mcp.js"
+  },
+  "files": [
+    "bin/xui-mcp.js",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=16"
+  },
+  "optionalDependencies": {
+    "3x-ui-mcp-darwin-arm64": "0.0.0-dev",
+    "3x-ui-mcp-darwin-x64": "0.0.0-dev",
+    "3x-ui-mcp-linux-arm64": "0.0.0-dev",
+    "3x-ui-mcp-linux-x64": "0.0.0-dev",
+    "3x-ui-mcp-win32-arm64": "0.0.0-dev",
+    "3x-ui-mcp-win32-x64": "0.0.0-dev"
+  }
+}

@@ -42,9 +42,10 @@ MCP (Model Context Protocol) server for [3x-ui](https://github.com/MHSanaei/3x-u
 
 ## Quick start
 
-Requires [Go 1.23+](https://go.dev/dl/): the `go run …@latest` form downloads and
-compiles on first use, then runs from cache. No Go toolchain? Use a
-[pre-built binary](#pre-built-binary) instead.
+`npx` needs only Node 16+ — the package ships prebuilt binaries for Linux, macOS
+and Windows on x64 and arm64, so nothing is compiled and no Go toolchain is
+needed. With Go already installed, `go run …@latest` works just as well; see
+[other ways to run it](#other-ways-to-run-it).
 
 ### Claude Code
 
@@ -53,7 +54,7 @@ claude mcp add 3x-ui \
   --env XUI_HOST=http://localhost:2053 \
   --env XUI_USERNAME=admin \
   --env XUI_PASSWORD=your-password \
-  -- go run github.com/pyworkload/3x-ui-mcp/cmd/xui-mcp@latest
+  -- npx -y 3x-ui-mcp
 ```
 
 ### Claude Desktop / Cursor
@@ -64,8 +65,8 @@ Add to `claude_desktop_config.json` (Claude Desktop) or `.cursor/mcp.json` (Curs
 {
   "mcpServers": {
     "3x-ui": {
-      "command": "go",
-      "args": ["run", "github.com/pyworkload/3x-ui-mcp/cmd/xui-mcp@latest"],
+      "command": "npx",
+      "args": ["-y", "3x-ui-mcp"],
       "env": {
         "XUI_HOST": "http://localhost:2053",
         "XUI_USERNAME": "admin",
@@ -85,8 +86,8 @@ Add to `.vscode/mcp.json`:
   "servers": {
     "3x-ui": {
       "type": "stdio",
-      "command": "go",
-      "args": ["run", "github.com/pyworkload/3x-ui-mcp/cmd/xui-mcp@latest"],
+      "command": "npx",
+      "args": ["-y", "3x-ui-mcp"],
       "env": {
         "XUI_HOST": "http://localhost:2053",
         "XUI_USERNAME": "admin",
@@ -97,25 +98,19 @@ Add to `.vscode/mcp.json`:
 }
 ```
 
-### Pre-built binary
+### Other ways to run it
 
-Download from [Releases](https://github.com/pyworkload/3x-ui-mcp/releases), then point
-`command` at the binary in any of the configs above:
+Swap `command` and `args` in any of the configs above:
 
-```json
-{
-  "mcpServers": {
-    "3x-ui": {
-      "command": "/path/to/xui-mcp",
-      "env": {
-        "XUI_HOST": "http://localhost:2053",
-        "XUI_USERNAME": "admin",
-        "XUI_PASSWORD": "your-password"
-      }
-    }
-  }
-}
-```
+| How | `command` | `args` |
+|---|---|---|
+| Go toolchain | `go` | `["run", "github.com/pyworkload/3x-ui-mcp/cmd/xui-mcp@latest"]` |
+| [Pre-built binary](https://github.com/pyworkload/3x-ui-mcp/releases) | `/path/to/xui-mcp` | — |
+| Installed globally | `xui-mcp` | — |
+
+`go run …@latest` compiles on first use and runs from cache afterwards.
+`npm install -g 3x-ui-mcp` puts `xui-mcp` on the PATH if you would rather not go
+through `npx` each time.
 
 ## Example prompts
 

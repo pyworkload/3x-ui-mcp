@@ -1,5 +1,5 @@
 # Build artifacts
-bin/
+/bin/
 dist/
 *.exe
 *.exe~
@@ -37,3 +37,7 @@ CLAUDE.md
 
 # Local bug notes / working docs (may contain private infra details)
 BUG-*.md
+
+# npm packaging output
+node_modules/
+*.tgz

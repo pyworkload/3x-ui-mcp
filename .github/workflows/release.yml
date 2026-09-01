@@ -26,3 +26,45 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Keep the built binaries for the npm job
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          retention-days: 1
+
+  npm:
+    name: Publish to npm
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Required by `npm publish --provenance`, which signs each package with a
+      # verifiable link back to this workflow run.
+      id-token: write
+    # Without the token the job would fail every release for a project that has
+    # not opted into npm; skip it instead.
+    if: ${{ github.repository == 'pyworkload/3x-ui-mcp' }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - name: Assemble the npm packages
+        run: scripts/npm-build.sh "${GITHUB_REF_NAME#v}"
+      - name: Publish
+        # The platform packages go first: the CLI depends on them, and an
+        # installer resolving the CLI before they exist gets an unusable tree.
+        run: |
+          set -euo pipefail
+          for pkg in dist/npm/3x-ui-mcp-*; do
+            npm publish "$pkg" --provenance --access public
+          done
+          npm publish dist/npm/cli --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

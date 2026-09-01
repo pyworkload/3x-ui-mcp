@@ -11,7 +11,7 @@ LDFLAGS := -s -w \
 	-X main.commit=$(COMMIT) \
 	-X main.date=$(DATE)
 
-.PHONY: build run clean test lint fmt vet tidy help
+.PHONY: build run clean test lint fmt vet tidy npm-pack help
 
 ## build: Compile the binary
 build:
@@ -51,6 +51,12 @@ fmt:
 ## tidy: Clean up go.mod and go.sum
 tidy:
 	go mod tidy
+
+## npm-pack: Cross-compile every target and stage the npm packages in dist/npm (no publishing)
+npm-pack:
+	@which goreleaser > /dev/null 2>&1 || { echo "install: go install github.com/goreleaser/goreleaser/v2@latest"; exit 1; }
+	goreleaser build --snapshot --clean
+	scripts/npm-build.sh $(VERSION)
 
 ## help: Show this help
 help:
