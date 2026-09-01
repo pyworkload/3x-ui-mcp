@@ -9,12 +9,12 @@ const path = require('node:path');
 
 // process.platform + process.arch -> the package carrying that build.
 const PACKAGES = {
-  'darwin arm64': '3x-ui-mcp-darwin-arm64',
-  'darwin x64': '3x-ui-mcp-darwin-x64',
-  'linux arm64': '3x-ui-mcp-linux-arm64',
-  'linux x64': '3x-ui-mcp-linux-x64',
-  'win32 arm64': '3x-ui-mcp-win32-arm64',
-  'win32 x64': '3x-ui-mcp-win32-x64',
+  'darwin arm64': '@pyworkload/3x-ui-mcp-darwin-arm64',
+  'darwin x64': '@pyworkload/3x-ui-mcp-darwin-x64',
+  'linux arm64': '@pyworkload/3x-ui-mcp-linux-arm64',
+  'linux x64': '@pyworkload/3x-ui-mcp-linux-x64',
+  'win32 arm64': '@pyworkload/3x-ui-mcp-win32-arm64',
+  'win32 x64': '@pyworkload/3x-ui-mcp-win32-x64',
 };
 
 function fail(message) {

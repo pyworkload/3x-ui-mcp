@@ -53,11 +53,16 @@ for target in "${TARGETS[@]}"; do
   cp "$src" "$pkg_dir/bin/$exe"
   chmod +x "$pkg_dir/bin/$exe"
 
+  # The scope matters: six similar unscoped names published in a row trip npm's
+  # spam detection (E403 "Package name triggered spam detection"). Under a scope
+  # ownership is unambiguous, which is why every project shipping per-platform
+  # binaries this way uses one.
+  #
   # "os" and "cpu" make npm skip this package on every other platform, which is
   # what keeps an install to one binary instead of six.
   cat > "$pkg_dir/package.json" <<EOF
 {
-  "name": "3x-ui-mcp-$npm_target",
+  "name": "@pyworkload/3x-ui-mcp-$npm_target",
   "version": "$VERSION",
   "description": "Prebuilt xui-mcp binary for $os $arch. Installed automatically by the 3x-ui-mcp package.",
   "homepage": "https://github.com/pyworkload/3x-ui-mcp#readme",
@@ -70,6 +75,7 @@ for target in "${TARGETS[@]}"; do
   "os": ["$os"],
   "cpu": ["$arch"],
   "files": ["bin/$exe"],
+  "publishConfig": { "access": "public" },
   "preferUnplugged": true
 }
 EOF

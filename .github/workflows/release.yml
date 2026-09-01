@@ -64,6 +64,9 @@ jobs:
           set -euo pipefail
           for pkg in dist/npm/3x-ui-mcp-*; do
             npm publish "$pkg" --provenance --access public
+            # npm's spam heuristics also look at how fast similar names arrive,
+            # so the publishes are spaced out rather than fired back to back.
+            sleep 10
           done
           npm publish dist/npm/cli --provenance --access public
         env:
