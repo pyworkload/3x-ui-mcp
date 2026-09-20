@@ -42,6 +42,15 @@ open the PR against `main`. Commit subjects follow Conventional Commits —
 `feat:`, `fix:`, `docs:`, `chore:` — and say what changed for a user of the
 server, not which files moved.
 
+Anything a user would notice goes under `## [Unreleased]` in
+[CHANGELOG.md](CHANGELOG.md), in the same PR as the change. A new or removed
+tool also moves the tool count there, and a change to the minimum panel version
+gets its own line — those are the two things people come to the file for. The
+GitHub release notes are generated from commit subjects and drop `docs:`,
+`test:` and `chore:`, so the changelog is the curated view, not a duplicate of
+them. Releases themselves are cut by tagging `main`; nothing in the tree carries
+a version number to bump.
+
 ## Adding a tool
 
 The code is three layers, and a new tool touches each of them:

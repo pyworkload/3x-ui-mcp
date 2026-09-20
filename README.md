@@ -616,6 +616,8 @@ Bug reports, panel-version findings and pull requests are all welcome — see
 panel conventions a new tool has to follow.
 Participation is covered by the [Code of Conduct](CODE_OF_CONDUCT.md); for a
 vulnerability, follow [SECURITY.md](SECURITY.md) rather than opening an issue.
+What changed in each release, including the tool counts and the panel versions
+they need, is in [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 

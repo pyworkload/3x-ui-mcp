@@ -12,5 +12,6 @@
 - [ ] Checked against a live panel — version: <!-- e.g. v3.7.0 --> (or: N/A)
 - [ ] New or changed `update_*` tool preserves fields the caller omitted, with a test that proves it
 - [ ] Docs updated: README tool table and tool count, `CLAUDE.md` file map, panel-version table
+- [ ] `CHANGELOG.md` updated under `## [Unreleased]` (or: nothing a user would notice)
 
 <!-- If the panel disagrees with its own openapi.json here, say so — it belongs in a code comment too. -->
