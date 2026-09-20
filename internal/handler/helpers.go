@@ -267,56 +267,71 @@ func summarizeClientExport(raw json.RawMessage) string {
 // bytesPerGB converts the GB units used by MCP tool params to the bytes the panel stores.
 const bytesPerGB = 1073741824
 
-// clientRecordView parses the "client" object returned by GET clients/get/:email.
-// The panel returns a ClientRecord there, whose UUID lives under "uuid" (not "id"),
-// so we map it explicitly back onto a ClientConfig for round-tripping into updates.
-type clientRecordView struct {
-	UUID       string `json:"uuid"`
-	Security   string `json:"security"`
-	Password   string `json:"password"`
-	Auth       string `json:"auth"`
-	Flow       string `json:"flow"`
-	Email      string `json:"email"`
-	LimitIP    int    `json:"limitIp"`
-	TotalGB    int64  `json:"totalGB"`
-	ExpiryTime int64  `json:"expiryTime"`
-	Enable     bool   `json:"enable"`
-	TgID       int64  `json:"tgId"`
-	SubID      string `json:"subId"`
-	Group      string `json:"group"`
-	Comment    string `json:"comment"`
-	Reset      int    `json:"reset"`
-}
+// clientServerOwnedFields are keys the panel's client record carries that the
+// update endpoint does not read back. "id" is the row's primary key — an int
+// here, while the body's "id" is the UUID string model.Client expects, so
+// echoing it would fail to bind; the timestamps are maintained by the panel.
+var clientServerOwnedFields = []string{"id", "createdAt", "updatedAt"}
 
-func (v clientRecordView) toConfig() xui.ClientConfig {
-	return xui.ClientConfig{
-		ID:         v.UUID,
-		Security:   v.Security,
-		Password:   v.Password,
-		Auth:       v.Auth,
-		Flow:       v.Flow,
-		Email:      v.Email,
-		LimitIP:    v.LimitIP,
-		TotalGB:    v.TotalGB,
-		ExpiryTime: v.ExpiryTime,
-		Enable:     v.Enable,
-		TgID:       v.TgID,
-		SubID:      v.SubID,
-		Group:      v.Group,
-		Comment:    v.Comment,
-		Reset:      v.Reset,
-	}
-}
-
-// parseClient extracts the current client config from a GET clients/get/:email response.
-func parseClient(resp *xui.Response) (xui.ClientConfig, error) {
+// clientBaseFromRecord turns a GET clients/get/:email response into the base of
+// a POST clients/update/:email body.
+//
+// The two shapes are close but not identical: the panel answers with a
+// model.ClientRecord and reads a model.Client. Both carry the same information,
+// so the record is carried across verbatim apart from the three server-owned
+// keys and the two fields the two structs spell differently — the UUID
+// ("uuid" on the record, "id" in the body) and the WireGuard address list
+// (comma-separated string on the record, array in the body).
+//
+// Everything else is passed through untouched on purpose. The update endpoint
+// replaces the client outright, and it writes reverse, adTag, group and
+// limitHwid unconditionally, so any field this code fails to send is cleared —
+// which is how a VLESS reverse tag, an AmneziaWG peer's keys or an HWID limit
+// would disappear from a client that only had its expiry date changed.
+func clientBaseFromRecord(obj json.RawMessage) (map[string]any, error) {
 	var wrap struct {
-		Client clientRecordView `json:"client"`
+		Client map[string]any `json:"client"`
 	}
-	if err := json.Unmarshal(resp.Obj, &wrap); err != nil {
-		return xui.ClientConfig{}, fmt.Errorf("parsing client record: %w", err)
+	if err := json.Unmarshal(obj, &wrap); err != nil {
+		return nil, fmt.Errorf("parsing client record: %w", err)
 	}
-	return wrap.Client.toConfig(), nil
+	if len(wrap.Client) == 0 {
+		return nil, fmt.Errorf("client record is empty")
+	}
+
+	body := make(map[string]any, len(wrap.Client))
+	for k, v := range wrap.Client {
+		body[k] = v
+	}
+	for _, key := range clientServerOwnedFields {
+		delete(body, key)
+	}
+	if uuid, ok := body["uuid"]; ok {
+		delete(body, "uuid")
+		body["id"] = uuid
+	}
+	// An empty list is dropped rather than sent as []: the panel reads an
+	// absent AllowedIPs as "keep the address this inbound already has".
+	if ips, ok := body["allowedIPs"].(string); ok {
+		if parsed := splitAllowedIPs(ips); len(parsed) > 0 {
+			body["allowedIPs"] = parsed
+		} else {
+			delete(body, "allowedIPs")
+		}
+	}
+	return body, nil
+}
+
+// splitAllowedIPs turns the record's comma-separated WireGuard address list
+// into the array the update body carries.
+func splitAllowedIPs(csv string) []string {
+	out := []string{}
+	for _, part := range strings.Split(csv, ",") {
+		if trimmed := strings.TrimSpace(part); trimmed != "" {
+			out = append(out, trimmed)
+		}
+	}
+	return out
 }
 
 // generateUUID generates a random UUID v4.

@@ -6,7 +6,11 @@ import (
 	"testing"
 )
 
-// sampleInbound is a realistic GetInbound response body, before any patch.
+// sampleInbound is a GetInbound response body captured from a live v3.8.5
+// panel, before any patch. Two things about it matter: settings,
+// streamSettings and sniffing come back as nested objects (the panel has
+// marshalled them that way since v3.3.1, not as the JSON-encoded strings it
+// used to emit), and the row carries columns no release before v3.8 had.
 const sampleInbound = `{
 	"id": 5,
 	"up": 1234,
@@ -18,10 +22,19 @@ const sampleInbound = `{
 	"listen": "",
 	"port": 8200,
 	"protocol": "vless",
-	"settings": "{\"clients\":[{\"id\":\"uuid-1\",\"email\":\"user1\",\"enable\":true}],\"decryption\":\"none\"}",
-	"streamSettings": "{\"network\":\"xhttp\",\"security\":\"none\",\"xhttpSettings\":{\"mode\":\"auto\",\"path\":\"/metrics\"}}",
+	"settings": {"clients":[{"id":"uuid-1","email":"user1","enable":true}],"decryption":"none"},
+	"streamSettings": {"network":"xhttp","security":"none","xhttpSettings":{"mode":"auto","path":"/metrics"}},
 	"tag": "inbound-8200",
-	"sniffing": "{\"enabled\":true}",
+	"sniffing": {"enabled":true},
+	"shareAddr": "",
+	"shareAddrStrategy": "listen",
+	"subSortIndex": 3,
+	"disableFlow": true,
+	"trafficReset": "monthly",
+	"trafficResetDay": 14,
+	"lastTrafficResetTime": 1788008943885,
+	"nodeId": 2,
+	"originNodeGuid": "e72b67be-fa96-478a-b528-6701fefca789",
 	"clientStats": [
 		{"id": 1, "inboundId": 5, "email": "user1", "up": 10, "down": 20, "total": 0, "enable": true}
 	]
@@ -76,13 +89,15 @@ func TestNormalizeInboundPatchKeys_NilInput(t *testing.T) {
 	}
 }
 
-func TestInboundBaseFromResponse_StripsClientStats(t *testing.T) {
+func TestInboundBaseFromResponse_StripsRuntimeFields(t *testing.T) {
 	base, err := inboundBaseFromResponse(json.RawMessage(sampleInbound))
 	if err != nil {
 		t.Fatalf("inboundBaseFromResponse: %v", err)
 	}
-	if _, ok := base["clientStats"]; ok {
-		t.Error("clientStats should be stripped from the update body")
+	for _, key := range inboundRuntimeFields {
+		if _, ok := base[key]; ok {
+			t.Errorf("%s should be stripped from the update body", key)
+		}
 	}
 	if base["port"] != float64(8200) {
 		t.Errorf("port = %v, want 8200", base["port"])
@@ -92,6 +107,61 @@ func TestInboundBaseFromResponse_StripsClientStats(t *testing.T) {
 	}
 	if base["remark"] != "vless-xhttp-metrics" {
 		t.Errorf("remark = %v, want %q", base["remark"], "vless-xhttp-metrics")
+	}
+}
+
+// The panel stopped encoding these three as strings in v3.3.1. Parsing the
+// response into a struct that still declared them as strings failed outright,
+// which is what took update_inbound down against v3.8.5.
+func TestInboundBaseFromResponse_AcceptsNestedSettings(t *testing.T) {
+	base, err := inboundBaseFromResponse(json.RawMessage(sampleInbound))
+	if err != nil {
+		t.Fatalf("inboundBaseFromResponse: %v", err)
+	}
+	for _, key := range []string{"settings", "streamSettings", "sniffing"} {
+		obj, ok := base[key].(map[string]any)
+		if !ok {
+			t.Errorf("%s = %T, want the nested object carried through", key, base[key])
+			continue
+		}
+		if len(obj) == 0 {
+			t.Errorf("%s came through empty", key)
+		}
+	}
+}
+
+// Fields the panel grows must survive the round-trip without this code being
+// taught about them one by one — the update endpoint clears whatever it is not
+// sent, so a whitelist here silently resets each new column.
+func TestInboundBaseFromResponse_KeepsFieldsAddedByNewerPanels(t *testing.T) {
+	base, err := inboundBaseFromResponse(json.RawMessage(sampleInbound))
+	if err != nil {
+		t.Fatalf("inboundBaseFromResponse: %v", err)
+	}
+	want := map[string]any{
+		"shareAddr":         "",
+		"shareAddrStrategy": "listen",
+		"subSortIndex":      float64(3),
+		"disableFlow":       true,
+		"trafficReset":      "monthly",
+		"trafficResetDay":   float64(14),
+		"nodeId":            float64(2),
+	}
+	for key, value := range want {
+		got, ok := base[key]
+		if !ok {
+			t.Errorf("%s is missing from the update body — the panel would reset it", key)
+			continue
+		}
+		if got != value {
+			t.Errorf("%s = %v, want %v", key, got, value)
+		}
+	}
+}
+
+func TestInboundBaseFromResponse_RejectsEmptyMap(t *testing.T) {
+	if _, err := inboundBaseFromResponse(json.RawMessage(`{}`)); err == nil {
+		t.Error("expected error for an empty inbound object")
 	}
 }
 
@@ -134,8 +204,14 @@ func TestMergeInboundPatch_OnlyStreamSettingsSnakeCase(t *testing.T) {
 	if merged["remark"] != "vless-xhttp-metrics" {
 		t.Errorf("remark = %v, want %q", merged["remark"], "vless-xhttp-metrics")
 	}
-	if merged["settings"] == "" {
-		t.Error("settings should survive merge (not be blanked)")
+	if _, ok := merged["settings"].(map[string]any); !ok {
+		t.Errorf("settings = %v, want the current clients object to survive the merge", merged["settings"])
+	}
+	if merged["trafficReset"] != "monthly" {
+		t.Errorf("trafficReset = %v, want %q (a whitelist would have blanked it)", merged["trafficReset"], "monthly")
+	}
+	if merged["disableFlow"] != true {
+		t.Errorf("disableFlow = %v, want true (a whitelist would have reset it, restoring Vision flow on every client)", merged["disableFlow"])
 	}
 
 	// The snake_case key must NOT appear in the outbound body.
@@ -229,7 +305,7 @@ func TestMergeInboundPatch_RejectsEmptyProtocol(t *testing.T) {
 func TestMergeInboundPatch_RejectsBrokenBase(t *testing.T) {
 	// If the GET response somehow returned a port=0 inbound, the validator
 	// should block us from echoing that back and confirming the damage.
-	broken := `{"id":5,"port":0,"protocol":"","listen":"","enable":false,"settings":"","streamSettings":"","tag":"inbound-0","sniffing":""}`
+	broken := `{"id":5,"port":0,"protocol":"","listen":"","enable":false,"settings":null,"streamSettings":null,"tag":"inbound-0","sniffing":null}`
 	_, err := mergeInboundPatch(json.RawMessage(broken), map[string]any{"remark": "rename"})
 	if err == nil {
 		t.Fatal("expected error when base inbound already has port=0")

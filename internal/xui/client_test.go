@@ -686,6 +686,108 @@ func TestTokenOnly_NoCredentialsPanelRouteErrors(t *testing.T) {
 	}
 }
 
+// 3x-ui v3.8.0+ answers 401 (not 404) for a Bearer token it refuses, but only
+// when no session backs the request — the panel checks the session after the
+// token. So a 401 has to drive the same re-login as a 404, not fail the call.
+func TestTokenRejected_401FallsBackToSession(t *testing.T) {
+	var requestCount atomic.Int32
+	var loginCount atomic.Int32
+	var hasSession atomic.Bool
+
+	_, client := newTestServerWithToken(t, "stale-token", func(w http.ResponseWriter, r *http.Request) {
+		if writeCSRFIfRequested(w, r) {
+			return
+		}
+		switch r.URL.Path {
+		case "/login":
+			loginCount.Add(1)
+			hasSession.Store(true)
+			json.NewEncoder(w).Encode(Response{Success: true})
+		case "/panel/api/inbounds/list":
+			requestCount.Add(1)
+			if !hasSession.Load() {
+				// Token presented and refused, nothing else to fall back on.
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+			json.NewEncoder(w).Encode(Response{Success: true, Msg: "inbounds"})
+		default:
+			t.Errorf("unexpected request path: %s", r.URL.Path)
+		}
+	})
+
+	resp, err := client.Get(context.Background(), "panel/api/inbounds/list")
+	if err != nil {
+		t.Fatalf("Get returned error: %v", err)
+	}
+	if !resp.Success {
+		t.Error("expected success after the session login recovered the 401")
+	}
+	if loginCount.Load() != 1 {
+		t.Errorf("login called %d times, want 1", loginCount.Load())
+	}
+	if requestCount.Load() != 2 {
+		t.Errorf("endpoint called %d times, want 2", requestCount.Load())
+	}
+}
+
+// Token-only deployment: a 401 is terminal, and the error has to name the token
+// rather than repeating the pre-v3.8.0 "expired session" reading of a 404.
+func TestTokenOnly_401NamesTheToken(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if writeCSRFIfRequested(w, r) {
+			return
+		}
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	t.Cleanup(ts.Close)
+
+	cfg := &config.Config{
+		Host:     ts.URL,
+		BasePath: "/",
+		APIToken: "definitely-not-a-token",
+		// No username/password: nothing to fall back on.
+	}
+	client := NewClient(cfg, slog.Default())
+
+	_, err := client.Get(context.Background(), "panel/api/inbounds/list")
+	if err == nil {
+		t.Fatal("expected an error for a refused API token, got nil")
+	}
+	if !strings.Contains(err.Error(), "XUI_API_TOKEN") || !strings.Contains(err.Error(), "401") {
+		t.Errorf("error %q should name XUI_API_TOKEN and the 401", err)
+	}
+}
+
+// Credentials present but the panel keeps answering 401: the retry is spent and
+// the error should say both paths failed.
+func TestDo_FailsAfterReauthStill401(t *testing.T) {
+	var loginCount atomic.Int32
+
+	_, client := newTestServerWithToken(t, "stale-token", func(w http.ResponseWriter, r *http.Request) {
+		if writeCSRFIfRequested(w, r) {
+			return
+		}
+		if r.URL.Path == "/login" {
+			loginCount.Add(1)
+			json.NewEncoder(w).Encode(Response{Success: true})
+			return
+		}
+		w.WriteHeader(http.StatusUnauthorized)
+	})
+
+	_, err := client.Get(context.Background(), "panel/api/inbounds/list")
+	if err == nil {
+		t.Fatal("expected an error when 401 survives re-auth, got nil")
+	}
+	if !strings.Contains(err.Error(), "after re-auth") {
+		t.Errorf("error %q should report that re-auth was already tried", err)
+	}
+	if loginCount.Load() != 1 {
+		t.Errorf("login called %d times, want 1", loginCount.Load())
+	}
+}
+
 // GET on a route the panel doesn't have lands on the SPA shell: 200 with
 // index.html. That must not reach the caller as a successful API response.
 func TestSPAShell_NotReportedAsSuccess(t *testing.T) {

@@ -26,7 +26,7 @@ MCP (Model Context Protocol) server for [3x-ui](https://github.com/MHSanaei/3x-u
 
 ## Features
 
-- **The whole panel API** — 166 tools across inbounds, clients, groups, hosts, nodes, routing, balancers, geodata, metrics, tokens and maintenance. Everything 3x-ui exposes except four file-transfer and node-sync routes (3x-ui v3.3.0+ — see [Panel versions](#panel-versions)).
+- **The whole panel API** — 167 tools across inbounds, clients, groups, hosts, nodes, routing, balancers, geodata, metrics, tokens and maintenance. Everything 3x-ui exposes except four file-transfer and node-sync routes (3x-ui v3.3.0+ — see [Panel versions](#panel-versions)).
 - **Two auth modes** — session login with CSRF, or a Bearer API token (`XUI_API_TOKEN`), with transparent re-authentication and CSRF refresh when either goes stale.
 - **Email-keyed clients** — one client attaches to several inbounds; bulk create, adjust, enable and delete, plus server-side paging over large panels.
 - **Annotated tools** — every tool declares its effect, so an MCP client can tell a read-only call from a destructive one before running it.
@@ -179,11 +179,17 @@ cp -r skills/* .claude/skills/       # this project only
   *rotates* a single shared `cli-fallback` token instead of minting a new one, so
   running it again invalidates a token you handed out earlier.
 
-**Narrowing the toolset:** all 166 tool schemas together occupy roughly 28k tokens
+  Since **v3.8.0** a token the panel refuses answers **401** instead of the 404 it
+  used to be masked behind. The panel still checks the session afterwards, so if
+  credentials are also configured the client logs in, retries and logs a warning
+  that the token was refused; with the token alone, the call fails with an error
+  naming it. A wrong `XUI_BASE_PATH` still 404s, so the two are now tellable apart.
+
+**Narrowing the toolset:** all 167 tool schemas together occupy roughly 28k tokens
 of model context in every session — worth narrowing. `XUI_TOOLSETS` loads only
 the groups you need: `inbounds`, `clients`, `server`, `xray`, `metrics`,
 `groups`, `geodata`, `hosts`, `nodes`, `tokens`, `providers`, `maintenance`, or
-`all`. `XUI_TOOLSETS=clients,metrics` leaves 44 tools at about 7k tokens. An
+`all`. `XUI_TOOLSETS=clients,metrics` leaves 45 tools at about 7k tokens. An
 unknown name fails at startup rather than silently loading nothing.
 
 ## Panel versions
@@ -216,8 +222,30 @@ version listed:
 The last two rows are bounded by the panel's own generated `openapi.json`, which
 only starts at v3.5.0 — some of those routes may predate it.
 
-Tested against **v3.7.0**, the current panel release: every tool here was run
-against a live v3.7.0 panel.
+**v3.8 added no routes.** Its drift is in the JSON shape instead. Since v3.3.1
+the panel emits an inbound's `settings`, `streamSettings` and `sniffing` as
+nested objects rather than the JSON-encoded strings older releases sent, and
+every release keeps adding columns to inbounds and clients. So this server no
+longer models either body as a struct: `update_inbound` and `update_client` read
+the current row into a map, drop only the fields the panel recomputes per
+request, and overlay the supplied parameters — anything a newer panel adds rides
+along untouched instead of being silently cleared on the next update. Riding
+along is not the same as being settable, so the client columns those releases
+added — the HWID limit, the per-client reset cycle, the VLESS reverse tag, and
+the MTProto, WireGuard and AmneziaWG peer settings — have parameters of their
+own on both `add_client` and `update_client`. The full list is in the
+`xui://docs/client-fields` resource.
+
+Tested against **v3.8.5**, the current panel release. Every tool was exercised
+against a live panel: the reads, the writes, the node tools against a second
+panel registered as a node, and the outbound-subscription tools against a URL
+that really serves a list. Four need a configuration this server cannot conjure
+— `test_smtp` and `test_telegram_bot` want credentials, `delete_client_device`
+wants a device a client app registered, `get_node_cert_fingerprint` wants an
+HTTPS node — so those were confirmed to reach the panel and be answered by it,
+not to succeed. The read-modify-write contract is pinned by integration tests
+(`make test-panel`) that diff a whole inbound and a whole client across an
+update.
 
 ## MCP Tools
 
@@ -256,7 +284,7 @@ before the rest.
 Clients are email-keyed entities that can be attached to several inbounds at once.
 
 <details>
-<summary><b>38 tools</b> — CRUD by email, attach/detach, bulk operations, traffic, devices, online state</summary>
+<summary><b>39 tools</b> — CRUD by email, attach/detach, bulk operations, traffic, devices, online state</summary>
 
 | Tool | Description |
 |---|---|
@@ -281,6 +309,7 @@ Clients are email-keyed entities that can be attached to several inbounds at onc
 | `get_last_online` | Last-online timestamp for every client |
 | `update_client_traffic` | Set specific upload/download byte counters for a client |
 | `get_subscription_links` | Connection URLs served under a subscription ID, as JSON |
+| `get_client_links` | Connection URLs for one client by email, one per inbound |
 | `get_clients_by_telegram_id` | Find clients by Telegram user ID |
 | `list_client_devices` | HWID devices registered for a client |
 | `delete_client_device` | Remove one registered device, freeing an HWID slot |
