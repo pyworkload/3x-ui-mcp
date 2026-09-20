@@ -236,6 +236,13 @@ address. One client can be attached to several inbounds at once.
 | ` + "`group`" + ` | Group label, managed by the client-group tools |
 | ` + "`reset`" + ` | Traffic reset cycle in days; 0 disables the cycle |
 | ` + "`comment`" + ` | Free-text note |
+| ` + "`limitHwid`" + ` | How many devices may register a hardware ID; 0 means unlimited |
+| ` + "`resetDay`" + ` / ` + "`resetMax`" + ` | Calendar day of the month the quota renews (1-31, 0 keeps the day-interval mode of ` + "`reset`" + `) and how many renewals are allowed (0 = unlimited) |
+| ` + "`trafficReset`" + ` / ` + "`trafficResetDay`" + ` | Per-client reset cycle (` + "`never`/`hourly`/`daily`/`weekly`/`monthly`" + `) and the day it fires, independent of the inbound's own |
+| ` + "`reverse`" + ` | VLESS simple reverse proxy, an object holding one ` + "`tag`" + `. The tool parameter is ` + "`reverse_tag`" + `, and an empty string clears it |
+| ` + "`secret`" + ` / ` + "`adTag`" + ` | MTProto per-client secret and the advertising tag from @MTProxybot. ` + "`adTag`" + ` must be exactly 32 hex characters |
+| ` + "`privateKey`" + ` / ` + "`publicKey`" + ` / ` + "`preSharedKey`" + ` / ` + "`allowedIPs`" + ` / ` + "`keepAlive`" + ` | WireGuard and AmneziaWG peer settings. ` + "`allowedIPs`" + ` is an array in a request and a comma-separated string in a reply; ` + "`keepAlive`" + ` is seconds, and 0 sends no keepalive |
+| ` + "`forwardedPorts`" + ` | AmneziaWG port forwarding for this peer, e.g. ` + "`80,443,8000-8100`" + ` |
 
 Updates are read-modify-write: ` + "`update_client`" + ` reads the current record and
 overlays only the fields you pass, so omitting a field keeps it rather than

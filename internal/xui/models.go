@@ -9,23 +9,15 @@ type Response struct {
 	Obj     json.RawMessage `json:"obj"`
 }
 
-// Inbound represents a 3x-ui inbound connection.
-type Inbound struct {
-	ID             int    `json:"id"`
-	Up             int64  `json:"up"`
-	Down           int64  `json:"down"`
-	Total          int64  `json:"total"`
-	Remark         string `json:"remark"`
-	Enable         bool   `json:"enable"`
-	ExpiryTime     int64  `json:"expiryTime"`
-	Listen         string `json:"listen"`
-	Port           int    `json:"port"`
-	Protocol       string `json:"protocol"`
-	Settings       string `json:"settings"`
-	StreamSettings string `json:"streamSettings"`
-	Tag            string `json:"tag"`
-	Sniffing       string `json:"sniffing"`
-}
+// There is deliberately no Inbound struct. The panel's inbound shape drifts
+// between releases — v3.3.1 started emitting settings/streamSettings/sniffing
+// as nested objects instead of JSON-encoded strings, and v3.8.x added
+// shareAddr, shareAddrStrategy, subSortIndex, disableFlow, trafficReset,
+// trafficResetDay and the node columns. Modelling it here made the update
+// path both fail to parse the new shape and silently drop every field the
+// struct did not know, so inbound bodies are carried as map[string]any and
+// only the fields the panel computes per request are removed (see
+// inboundRuntimeFields in internal/handler/inbound.go).
 
 // ClientConfig represents a 3x-ui client (model.Client). It is sent both inside
 // a ClientCreatePayload (clients/add) and as the bare body of clients/update/:email.
@@ -45,6 +37,31 @@ type ClientConfig struct {
 	Group      string `json:"group,omitempty"` // Logical grouping label
 	Comment    string `json:"comment,omitempty"`
 	Reset      int    `json:"reset"`
+
+	// Fields below are optional and only sent when set, so a create that says
+	// nothing about them leaves the panel to its own defaults. On the panel
+	// side they belong to model.Client, except LimitHwid, which clients/add
+	// reads from inside the client object while clients/update reads it from
+	// the top level of the body (see the handler's update path).
+	ResetDay        int            `json:"resetDay,omitempty"`     // Calendar renewal day 1-31, 0 = interval mode
+	ResetMax        int            `json:"resetMax,omitempty"`     // Max auto-renews, 0 = unlimited
+	TrafficReset    string         `json:"trafficReset,omitempty"` // never|hourly|daily|weekly|monthly
+	TrafficResetDay int            `json:"trafficResetDay,omitempty"`
+	LimitHwid       int            `json:"limitHwid,omitempty"` // Max registered devices, 0 = unlimited
+	Reverse         *ClientReverse `json:"reverse,omitempty"`   // VLESS simple reverse proxy
+	Secret          string         `json:"secret,omitempty"`    // MTProto per-client secret
+	AdTag           string         `json:"adTag,omitempty"`     // MTProto ad tag, 32 hex chars
+	PrivateKey      string         `json:"privateKey,omitempty"`
+	PublicKey       string         `json:"publicKey,omitempty"`
+	PreSharedKey    string         `json:"preSharedKey,omitempty"`
+	AllowedIPs      []string       `json:"allowedIPs,omitempty"`
+	KeepAlive       *int           `json:"keepAlive,omitempty"`      // WireGuard PersistentKeepalive seconds; 0 sends none
+	ForwardedPorts  string         `json:"forwardedPorts,omitempty"` // AmneziaWG spec, e.g. "80,443,8000-8100"
+}
+
+// ClientReverse is the VLESS simple reverse proxy setting on a client.
+type ClientReverse struct {
+	Tag string `json:"tag"`
 }
 
 // ClientCreatePayload is the body for clients/add and each element of clients/bulkCreate.

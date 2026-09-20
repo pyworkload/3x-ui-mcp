@@ -29,7 +29,9 @@ const csrfHeaderName = "X-CSRF-Token"
 //     every panel route.
 //   - Bearer API token (optional): when set, sent on every request. The panel
 //     accepts it for /panel/api/* routes and skips CSRF there — on v3.3.0+ that
-//     covers every route this client calls, settings and xray included.
+//     covers every route this client calls, settings and xray included. A token
+//     the panel refuses does not fail the call on its own: v3.8.0+ answers 401
+//     only when there is no session behind it, so the client logs in and retries.
 type Client struct {
 	baseURL  string
 	username string
@@ -202,7 +204,7 @@ func (c *Client) ensureAuth(ctx context.Context) error {
 	return nil
 }
 
-// reAuth forces a new login (e.g., after session expiry detected via 403/404/3xx).
+// reAuth forces a new login (e.g., after session expiry detected via 401/403/404/3xx).
 func (c *Client) reAuth(ctx context.Context) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -236,6 +238,7 @@ func (c *Client) do(ctx context.Context, method, path, contentType string, body 
 
 	// resp == nil → the panel signalled an auth problem:
 	//   403       = CSRF token missing/stale (session-gated routes)
+	//   401       = a Bearer token the panel refused, with no session behind it
 	//   404 / 3xx = no/expired session (or a /panel/* route reached in token mode)
 	// Recovery requires panel credentials.
 	if !c.hasCredentials() {
@@ -254,6 +257,13 @@ func (c *Client) do(ctx context.Context, method, path, contentType string, body 
 				return resp, nil
 			}
 		}
+	}
+
+	// A 401 says the token itself was refused (wrong, disabled or expired). The
+	// session path is independent of it, so the retry below can still succeed —
+	// say so once rather than leaving a silently ignored token in the config.
+	if status == http.StatusUnauthorized && c.apiToken != "" {
+		c.logger.Warn("panel refused XUI_API_TOKEN (HTTP 401), falling back to a session login", "path", path)
 	}
 
 	// Fall back to a full re-login and retry once.
@@ -292,6 +302,12 @@ func (c *Client) authFailureError(path string, status int) error {
 	if status == http.StatusNotFound && isRelocatedRoute(path) {
 		return fmt.Errorf("request to %s failed (HTTP 404): 3x-ui v3.3.0 moved this endpoint under /panel/api/ — if the panel is older than that, use a v0.2.x release of this server; otherwise verify credentials/XUI_API_TOKEN", path)
 	}
+	if status == http.StatusUnauthorized && c.apiToken != "" {
+		if !c.hasCredentials() {
+			return fmt.Errorf("request to %s failed (HTTP 401): the panel refused XUI_API_TOKEN — 3x-ui v3.8.0+ answers 401 for a token that is wrong, disabled or expired (a wrong XUI_BASE_PATH still 404s). Verify the token, or set XUI_USERNAME/XUI_PASSWORD so the client can fall back to a session", path)
+		}
+		return fmt.Errorf("request to %s failed (HTTP 401) after re-auth: the panel refused XUI_API_TOKEN (wrong, disabled or expired on v3.8.0+) and the session login did not unlock the route either — verify both", path)
+	}
 	if c.apiToken != "" && !c.hasCredentials() {
 		return fmt.Errorf("request to %s failed (HTTP %d): this route needs a panel session, but only XUI_API_TOKEN is set — add XUI_USERNAME/XUI_PASSWORD for settings/xray tools, or verify the token", path, status)
 	}
@@ -302,7 +318,7 @@ func (c *Client) authFailureError(path string, status int) error {
 }
 
 // rawDo performs a single HTTP request, attaching auth headers as configured.
-// It returns (nil, status, nil) for auth-signalling statuses (403, 404, 3xx)
+// It returns (nil, status, nil) for auth-signalling statuses (401, 403, 404, 3xx)
 // so do() can decide how to recover.
 func (c *Client) rawDo(ctx context.Context, method, path, contentType string, body []byte) (*Response, int, error) {
 	var reqBody io.Reader
@@ -341,8 +357,12 @@ func (c *Client) rawDo(ctx context.Context, method, path, contentType string, bo
 
 	// Auth signals — let do() handle recovery:
 	//   404 (API routes) / 3xx redirect (panel routes) = expired/absent session
+	//   401 = a presented Bearer token the panel refused, with no session behind
+	//         it (3x-ui v3.8.0+; older panels masked this case as 404 too). The
+	//         panel checks the session after the token, so a login still fixes it.
 	//   403 = CSRF token rejected
 	if status == http.StatusNotFound ||
+		status == http.StatusUnauthorized ||
 		status == http.StatusForbidden ||
 		(status >= 300 && status < 400) {
 		return nil, status, nil

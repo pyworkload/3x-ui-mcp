@@ -34,9 +34,12 @@ func (c *Client) BulkCreateClients(ctx context.Context, payloads []ClientCreateP
 	return c.PostJSON(ctx, clientsBase+"bulkCreate", payloads)
 }
 
-// UpdateClient updates a client identified by email. inboundIds, when non-empty,
-// restricts the update to those attachments (the panel's ?inboundIds filter).
-func (c *Client) UpdateClient(ctx context.Context, email string, client ClientConfig, inboundIds []int) (*Response, error) {
+// UpdateClient updates a client identified by email. The body is a map rather
+// than a ClientConfig so a caller can round-trip every field the panel returned,
+// including the ones this package has no struct field for. inboundIds, when
+// non-empty, restricts the update to those attachments (the panel's
+// ?inboundIds filter).
+func (c *Client) UpdateClient(ctx context.Context, email string, client map[string]any, inboundIds []int) (*Response, error) {
 	path := clientsBase + "update/" + url.PathEscape(email)
 	if len(inboundIds) > 0 {
 		path += "?inboundIds=" + url.QueryEscape(joinInts(inboundIds))
@@ -142,6 +145,14 @@ func (c *Client) GetLastOnline(ctx context.Context) (*Response, error) {
 // endpoint serves, as a plain JSON array instead of base64.
 func (c *Client) GetSubscriptionLinks(ctx context.Context, subID string) (*Response, error) {
 	return c.Get(ctx, clientsBase+"subLinks/"+url.PathEscape(subID))
+}
+
+// GetClientLinks returns every connection URL for one client, across all the
+// inbounds it is attached to. Where GetSubscriptionLinks is keyed by subId and
+// answers for every client sharing it, this is keyed by email and answers for
+// exactly one client — including a client with no subId at all.
+func (c *Client) GetClientLinks(ctx context.Context, email string) (*Response, error) {
+	return c.Get(ctx, clientsBase+"links/"+url.PathEscape(email))
 }
 
 // UpdateClientTraffic sets specific upload/download byte values for a client.

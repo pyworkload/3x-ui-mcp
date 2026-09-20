@@ -22,113 +22,120 @@ func registerClientTools(s *server.MCPServer, client *xui.Client) {
 	h := &clientHandler{client: client}
 
 	s.AddTool(mcp.NewTool("add_client",
-		writesPanel,
-		mcp.WithDescription("Add a new client (user) and attach it to one or more inbounds. Clients are first-class, email-keyed entities. A UUID is auto-generated for VMess/VLESS if not provided; for Trojan/Shadowsocks/Hysteria the panel generates the key server-side when omitted. Field meanings and units: read the xui://docs/client-fields resource."),
-		mcp.WithArray("inbound_ids",
-			mcp.Required(),
-			mcp.Description("IDs of the inbounds to attach this client to (at least one)"),
-			mcp.WithNumberItems(),
-		),
-		mcp.WithString("email",
-			mcp.Required(),
-			mcp.Description("Unique client identifier/email"),
-		),
-		mcp.WithString("uuid",
-			mcp.Description("Client UUID (for VMess/VLESS). Auto-generated if empty"),
-		),
-		mcp.WithString("password",
-			mcp.Description("Client password (for Trojan/Shadowsocks)"),
-		),
-		mcp.WithString("security",
-			mcp.Description("Security/cipher method (e.g. Shadowsocks encryption method)"),
-		),
-		mcp.WithString("flow",
-			mcp.Description("XTLS flow setting (for VLESS, e.g. 'xtls-rprx-vision')"),
-		),
-		mcp.WithNumber("total_gb",
-			mcp.Description("Traffic limit in GB (0 = unlimited)"),
-			mcp.DefaultNumber(0),
-		),
-		mcp.WithNumber("expiry_time",
-			mcp.Description("Expiry as Unix timestamp in milliseconds (0 = never)"),
-			mcp.DefaultNumber(0),
-		),
-		mcp.WithNumber("limit_ip",
-			mcp.Description("Max simultaneous IP connections (0 = unlimited)"),
-			mcp.DefaultNumber(0),
-		),
-		mcp.WithBoolean("enable",
-			mcp.Description("Enable the client immediately"),
-			mcp.DefaultBool(true),
-		),
-		mcp.WithNumber("tg_id",
-			mcp.Description("Telegram user ID for notifications"),
-			mcp.DefaultNumber(0),
-		),
-		mcp.WithString("sub_id",
-			mcp.Description("Subscription ID for subscription links (auto-generated if empty)"),
-		),
-		mcp.WithString("group",
-			mcp.Description("Logical grouping label"),
-		),
-		mcp.WithString("comment",
-			mcp.Description("Optional comment about the client"),
-		),
+		append([]mcp.ToolOption{
+			writesPanel,
+			mcp.WithDescription("Add a new client (user) and attach it to one or more inbounds. Clients are first-class, email-keyed entities. A UUID is auto-generated for VMess/VLESS if not provided; for Trojan/Shadowsocks/Hysteria the panel generates the key server-side when omitted. Field meanings and units: read the xui://docs/client-fields resource."),
+			mcp.WithArray("inbound_ids",
+				mcp.Required(),
+				mcp.Description("IDs of the inbounds to attach this client to (at least one)"),
+				mcp.WithNumberItems(),
+			),
+			mcp.WithString("email",
+				mcp.Required(),
+				mcp.Description("Unique client identifier/email"),
+			),
+			mcp.WithString("uuid",
+				mcp.Description("Client UUID (for VMess/VLESS). Auto-generated if empty"),
+			),
+			mcp.WithString("password",
+				mcp.Description("Client password (for Trojan/Shadowsocks)"),
+			),
+			mcp.WithString("security",
+				mcp.Description("Security/cipher method (e.g. Shadowsocks encryption method)"),
+			),
+			mcp.WithString("flow",
+				mcp.Description("XTLS flow setting (for VLESS, e.g. 'xtls-rprx-vision')"),
+			),
+			mcp.WithNumber("total_gb",
+				mcp.Description("Traffic limit in GB (0 = unlimited)"),
+				mcp.DefaultNumber(0),
+			),
+			mcp.WithNumber("expiry_time",
+				mcp.Description("Expiry as Unix timestamp in milliseconds (0 = never)"),
+				mcp.DefaultNumber(0),
+			),
+			mcp.WithNumber("limit_ip",
+				mcp.Description("Max simultaneous IP connections (0 = unlimited)"),
+				mcp.DefaultNumber(0),
+			),
+			mcp.WithBoolean("enable",
+				mcp.Description("Enable the client immediately"),
+				mcp.DefaultBool(true),
+			),
+			mcp.WithNumber("tg_id",
+				mcp.Description("Telegram user ID for notifications"),
+				mcp.DefaultNumber(0),
+			),
+			mcp.WithString("sub_id",
+				mcp.Description("Subscription ID for subscription links (auto-generated if empty)"),
+			),
+			mcp.WithString("group",
+				mcp.Description("Logical grouping label"),
+			),
+			mcp.WithString("comment",
+				mcp.Description("Optional comment about the client"),
+			),
+			mcp.WithNumber("reset",
+				mcp.Description("Traffic auto-reset period in days (0 = off)"),
+			),
+		}, clientFieldParams()...)...,
 	), h.add)
 
 	s.AddTool(mcp.NewTool("update_client",
-		updatesPanel,
-		mcp.WithDescription("Update an existing client by email. Only the fields you pass are changed; everything else (including the UUID/password) is preserved by reading the current client first. Optionally restrict the update to specific inbounds via inbound_ids."),
-		mcp.WithString("email",
-			mcp.Required(),
-			mcp.Description("Email of the client to update"),
-		),
-		mcp.WithString("new_email",
-			mcp.Description("Rename the client to this email"),
-		),
-		mcp.WithArray("inbound_ids",
-			mcp.Description("Restrict the update to these inbound attachments (default: all of the client's inbounds)"),
-			mcp.WithNumberItems(),
-		),
-		mcp.WithString("uuid",
-			mcp.Description("New UUID (for VMess/VLESS)"),
-		),
-		mcp.WithString("password",
-			mcp.Description("New password (for Trojan/Shadowsocks)"),
-		),
-		mcp.WithString("security",
-			mcp.Description("Security/cipher method"),
-		),
-		mcp.WithString("flow",
-			mcp.Description("XTLS flow setting"),
-		),
-		mcp.WithNumber("total_gb",
-			mcp.Description("Traffic limit in GB (0 = unlimited)"),
-		),
-		mcp.WithNumber("expiry_time",
-			mcp.Description("Expiry as Unix timestamp in ms (0 = never)"),
-		),
-		mcp.WithNumber("limit_ip",
-			mcp.Description("Max simultaneous IPs (0 = unlimited)"),
-		),
-		mcp.WithBoolean("enable",
-			mcp.Description("Enable/disable the client"),
-		),
-		mcp.WithNumber("tg_id",
-			mcp.Description("Telegram user ID"),
-		),
-		mcp.WithString("sub_id",
-			mcp.Description("Subscription ID"),
-		),
-		mcp.WithString("group",
-			mcp.Description("Logical grouping label"),
-		),
-		mcp.WithString("comment",
-			mcp.Description("Comment"),
-		),
-		mcp.WithNumber("reset",
-			mcp.Description("Traffic auto-reset period in days (0 = off)"),
-		),
+		append([]mcp.ToolOption{
+			updatesPanel,
+			mcp.WithDescription("Update an existing client by email. Only the fields you pass are changed; everything else (including the UUID/password) is preserved by reading the current client first. Optionally restrict the update to specific inbounds via inbound_ids."),
+			mcp.WithString("email",
+				mcp.Required(),
+				mcp.Description("Email of the client to update"),
+			),
+			mcp.WithString("new_email",
+				mcp.Description("Rename the client to this email"),
+			),
+			mcp.WithArray("inbound_ids",
+				mcp.Description("Restrict the update to these inbound attachments (default: all of the client's inbounds)"),
+				mcp.WithNumberItems(),
+			),
+			mcp.WithString("uuid",
+				mcp.Description("New UUID (for VMess/VLESS)"),
+			),
+			mcp.WithString("password",
+				mcp.Description("New password (for Trojan/Shadowsocks)"),
+			),
+			mcp.WithString("security",
+				mcp.Description("Security/cipher method"),
+			),
+			mcp.WithString("flow",
+				mcp.Description("XTLS flow setting"),
+			),
+			mcp.WithNumber("total_gb",
+				mcp.Description("Traffic limit in GB (0 = unlimited)"),
+			),
+			mcp.WithNumber("expiry_time",
+				mcp.Description("Expiry as Unix timestamp in ms (0 = never)"),
+			),
+			mcp.WithNumber("limit_ip",
+				mcp.Description("Max simultaneous IPs (0 = unlimited)"),
+			),
+			mcp.WithBoolean("enable",
+				mcp.Description("Enable/disable the client"),
+			),
+			mcp.WithNumber("tg_id",
+				mcp.Description("Telegram user ID"),
+			),
+			mcp.WithString("sub_id",
+				mcp.Description("Subscription ID"),
+			),
+			mcp.WithString("group",
+				mcp.Description("Logical grouping label"),
+			),
+			mcp.WithString("comment",
+				mcp.Description("Comment"),
+			),
+			mcp.WithNumber("reset",
+				mcp.Description("Traffic auto-reset period in days (0 = off)"),
+			),
+		}, clientFieldParams()...)...,
 	), h.update)
 
 	s.AddTool(mcp.NewTool("delete_client",
@@ -362,6 +369,15 @@ func registerClientTools(s *server.MCPServer, client *xui.Client) {
 		),
 	), h.getSubscriptionLinks)
 
+	s.AddTool(mcp.NewTool("get_client_links",
+		readsPanel,
+		mcp.WithDescription("Get the connection URLs for one client, one per inbound it is attached to. Keyed by email, so it answers for that client alone — unlike get_subscription_links, which is keyed by subId and returns the links of every client sharing it. Works for a client with no subId."),
+		mcp.WithString("email",
+			mcp.Required(),
+			mcp.Description("Client email (the client key)"),
+		),
+	), h.getClientLinks)
+
 	s.AddTool(mcp.NewTool("get_clients_by_telegram_id",
 		readsPanel,
 		mcp.WithDescription("Look up clients by Telegram user ID. Answers with an array, since several clients can share one Telegram account."),
@@ -565,6 +581,14 @@ func (h *clientHandler) getSubscriptionLinks(ctx context.Context, req mcp.CallTo
 	return toResult(h.client.GetSubscriptionLinks(ctx, subID))
 }
 
+func (h *clientHandler) getClientLinks(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	email, err := req.RequireString("email")
+	if err != nil {
+		return mcp.NewToolResultError("email is required"), nil
+	}
+	return toResult(h.client.GetClientLinks(ctx, email))
+}
+
 // buildClientConfig assembles a ClientConfig from the request params (no auto-generation).
 func (h *clientHandler) buildClientConfig(req mcp.CallToolRequest) xui.ClientConfig {
 	return xui.ClientConfig{
@@ -583,7 +607,41 @@ func (h *clientHandler) buildClientConfig(req mcp.CallToolRequest) xui.ClientCon
 		Group:      req.GetString("group", ""),
 		Comment:    req.GetString("comment", ""),
 		Reset:      int(req.GetFloat("reset", 0)),
+
+		ResetDay:        int(req.GetFloat("reset_day", 0)),
+		ResetMax:        int(req.GetFloat("reset_max", 0)),
+		TrafficReset:    req.GetString("traffic_reset", ""),
+		TrafficResetDay: int(req.GetFloat("traffic_reset_day", 0)),
+		LimitHwid:       int(req.GetFloat("limit_hwid", 0)),
+		Secret:          req.GetString("secret", ""),
+		AdTag:           req.GetString("ad_tag", ""),
+		PrivateKey:      req.GetString("private_key", ""),
+		PublicKey:       req.GetString("public_key", ""),
+		PreSharedKey:    req.GetString("pre_shared_key", ""),
+		AllowedIPs:      req.GetStringSlice("allowed_ips", nil),
+		ForwardedPorts:  req.GetString("forwarded_ports", ""),
+		Reverse:         reverseFromParam(req),
+		KeepAlive:       keepAliveFromParam(req),
 	}
+}
+
+// reverseFromParam builds the VLESS reverse object, or nil when the caller said
+// nothing — the panel reads a missing key as "no reverse proxy".
+func reverseFromParam(req mcp.CallToolRequest) *xui.ClientReverse {
+	if tag := req.GetString("reverse_tag", ""); tag != "" {
+		return &xui.ClientReverse{Tag: tag}
+	}
+	return nil
+}
+
+// keepAliveFromParam distinguishes an unset keep_alive from an explicit 0,
+// which the panel reads as "send no keepalive packets".
+func keepAliveFromParam(req mcp.CallToolRequest) *int {
+	if _, ok := req.GetArguments()["keep_alive"]; !ok {
+		return nil
+	}
+	seconds := int(req.GetFloat("keep_alive", 0))
+	return &seconds
 }
 
 func (h *clientHandler) add(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -628,14 +686,101 @@ func (h *clientHandler) add(ctx context.Context, req mcp.CallToolRequest) (*mcp.
 	return result, nil
 }
 
+// clientFieldParams are the per-client panel fields both add_client and
+// update_client accept. They were carried through update_client's
+// read-modify-write long before they could be set, so this only opens the
+// fields the panel already stored — no new shape reaches it.
+func clientFieldParams() []mcp.ToolOption {
+	return []mcp.ToolOption{
+		mcp.WithNumber("limit_hwid",
+			mcp.Description("Max devices (HWIDs) that may register for this client, 0 = unlimited. See list_client_devices"),
+		),
+		mcp.WithNumber("reset_day",
+			mcp.Description("Calendar day of the month the traffic quota renews, 1-31. 0 keeps the interval mode set by 'reset'"),
+		),
+		mcp.WithNumber("reset_max",
+			mcp.Description("How many times the quota may auto-renew, 0 = unlimited"),
+		),
+		mcp.WithString("traffic_reset",
+			mcp.Description("Per-client traffic reset cycle, independent of the inbound's own"),
+			mcp.Enum("never", "hourly", "daily", "weekly", "monthly"),
+		),
+		mcp.WithNumber("traffic_reset_day",
+			mcp.Description("Day of the cycle the per-client reset fires, 1-31"),
+		),
+		mcp.WithString("reverse_tag",
+			mcp.Description("VLESS simple reverse proxy tag. Pass an empty string to clear it"),
+		),
+		mcp.WithString("secret",
+			mcp.Description("MTProto per-client secret, used to build the tg://proxy link"),
+		),
+		mcp.WithString("ad_tag",
+			mcp.Description("MTProto advertising tag from @MTProxybot: exactly 32 hex characters, or the panel rejects it"),
+		),
+		mcp.WithString("private_key",
+			mcp.Description("WireGuard/AmneziaWG peer private key"),
+		),
+		mcp.WithString("public_key",
+			mcp.Description("WireGuard/AmneziaWG peer public key"),
+		),
+		mcp.WithString("pre_shared_key",
+			mcp.Description("WireGuard/AmneziaWG pre-shared key"),
+		),
+		mcp.WithArray("allowed_ips",
+			mcp.Description("WireGuard/AmneziaWG peer addresses, e.g. [\"10.0.0.2/32\", \"fd00::2/128\"]"),
+			mcp.WithStringItems(),
+		),
+		mcp.WithNumber("keep_alive",
+			mcp.Description("WireGuard PersistentKeepalive in seconds; 0 sends none. Omit to keep the stored value"),
+		),
+		mcp.WithString("forwarded_ports",
+			mcp.Description("AmneziaWG per-client port forwarding, e.g. \"80,443,8000-8100\""),
+		),
+	}
+}
+
+// clientStringParams maps an update_client string parameter to the body key
+// the panel reads it from.
+var clientStringParams = map[string]string{
+	"uuid":      "id",
+	"password":  "password",
+	"security":  "security",
+	"flow":      "flow",
+	"sub_id":    "subId",
+	"group":     "group",
+	"comment":   "comment",
+	"new_email": "email",
+
+	"traffic_reset":   "trafficReset",
+	"secret":          "secret",
+	"ad_tag":          "adTag",
+	"private_key":     "privateKey",
+	"public_key":      "publicKey",
+	"pre_shared_key":  "preSharedKey",
+	"forwarded_ports": "forwardedPorts",
+}
+
+// clientIntParams maps an update_client numeric parameter to its body key, for
+// the ones that are a plain integer with no unit conversion.
+var clientIntParams = map[string]string{
+	"limit_hwid":        "limitHwid",
+	"reset_day":         "resetDay",
+	"reset_max":         "resetMax",
+	"traffic_reset_day": "trafficResetDay",
+	"keep_alive":        "keepAlive",
+}
+
 func (h *clientHandler) update(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	email, err := req.RequireString("email")
 	if err != nil {
 		return mcp.NewToolResultError("email is required"), nil
 	}
 
-	// Read the current client so omitted params are preserved. Without this, an
-	// empty UUID/password field would make the panel regenerate the client key.
+	// Read the current client so omitted params are preserved. The panel's
+	// update is a full replace, so without this an empty UUID/password field
+	// would make it regenerate the client key, and every field the tool has no
+	// parameter for — the WireGuard peer keys, the VLESS reverse tag, the HWID
+	// limit — would be cleared.
 	cur, apiErr := h.client.GetClient(ctx, email)
 	if apiErr != nil {
 		return mcp.NewToolResultError(apiErr.Error()), nil
@@ -643,45 +788,67 @@ func (h *clientHandler) update(ctx context.Context, req mcp.CallToolRequest) (*m
 	if !cur.Success {
 		return mcp.NewToolResultError("API error: " + cur.Msg), nil
 	}
-	client, perr := parseClient(cur)
+	body, perr := clientBaseFromRecord(cur.Obj)
 	if perr != nil {
 		return mcp.NewToolResultError(perr.Error()), nil
 	}
 
 	args := req.GetArguments()
+	supplied := func(param string) bool {
+		_, ok := args[param]
+		return ok
+	}
 
-	// String fields: GetString falls back to the existing value when absent.
-	client.ID = req.GetString("uuid", client.ID)
-	client.Password = req.GetString("password", client.Password)
-	client.Security = req.GetString("security", client.Security)
-	client.Flow = req.GetString("flow", client.Flow)
-	client.SubID = req.GetString("sub_id", client.SubID)
-	client.Group = req.GetString("group", client.Group)
-	client.Comment = req.GetString("comment", client.Comment)
-	client.Email = req.GetString("new_email", client.Email)
-
-	// Numeric/bool fields: only override when explicitly provided.
-	if _, ok := args["limit_ip"]; ok {
-		client.LimitIP = int(req.GetFloat("limit_ip", 0))
+	for param, key := range clientStringParams {
+		if supplied(param) {
+			body[key] = req.GetString(param, "")
+		}
 	}
-	if _, ok := args["total_gb"]; ok {
-		client.TotalGB = int64(req.GetFloat("total_gb", 0)) * bytesPerGB
+	if supplied("limit_ip") {
+		body["limitIp"] = int(req.GetFloat("limit_ip", 0))
 	}
-	if _, ok := args["expiry_time"]; ok {
-		client.ExpiryTime = int64(req.GetFloat("expiry_time", 0))
+	if supplied("total_gb") {
+		body["totalGB"] = int64(req.GetFloat("total_gb", 0)) * bytesPerGB
 	}
-	if _, ok := args["enable"]; ok {
-		client.Enable = req.GetBool("enable", true)
+	if supplied("expiry_time") {
+		body["expiryTime"] = int64(req.GetFloat("expiry_time", 0))
 	}
-	if _, ok := args["tg_id"]; ok {
-		client.TgID = int64(req.GetFloat("tg_id", 0))
+	if supplied("enable") {
+		body["enable"] = req.GetBool("enable", true)
 	}
-	if _, ok := args["reset"]; ok {
-		client.Reset = int(req.GetFloat("reset", 0))
+	if supplied("tg_id") {
+		body["tgId"] = int64(req.GetFloat("tg_id", 0))
+	}
+	if supplied("reset") {
+		body["reset"] = int(req.GetFloat("reset", 0))
+	}
+	for param, key := range clientIntParams {
+		if supplied(param) {
+			body[key] = int(req.GetFloat(param, 0))
+		}
+	}
+	// An empty list is dropped rather than sent as [], the same way
+	// clientBaseFromRecord treats one: the panel reads an absent allowedIPs as
+	// "keep the address this inbound already has".
+	if supplied("allowed_ips") {
+		if ips := req.GetStringSlice("allowed_ips", nil); len(ips) > 0 {
+			body["allowedIPs"] = ips
+		} else {
+			delete(body, "allowedIPs")
+		}
+	}
+	// reverse is an object on the panel, and an empty tag is how a caller drops
+	// it — sending {"tag": ""} would leave a reverse entry pointing nowhere.
+	if supplied("reverse_tag") {
+		if tag := req.GetString("reverse_tag", ""); tag != "" {
+			body["reverse"] = map[string]any{"tag": tag}
+		} else {
+			delete(body, "reverse")
+		}
 	}
 
 	inboundIDs := req.GetIntSlice("inbound_ids", nil)
-	return toResult(h.client.UpdateClient(ctx, email, client, inboundIDs))
+	return toResult(h.client.UpdateClient(ctx, email, body, inboundIDs))
 }
 
 func (h *clientHandler) delete(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {

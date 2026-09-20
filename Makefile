@@ -11,7 +11,7 @@ LDFLAGS := -s -w \
 	-X main.commit=$(COMMIT) \
 	-X main.date=$(DATE)
 
-.PHONY: build run clean test lint fmt vet tidy npm-pack help
+.PHONY: build run clean test test-panel lint fmt vet tidy npm-pack help
 
 ## build: Compile the binary
 build:
@@ -28,6 +28,11 @@ clean:
 ## test: Run all tests
 test:
 	go test -v -race ./...
+
+## test-panel: Run the integration tests against a live panel (XUI_HOST, default admin/admin)
+test-panel:
+	@test -n "$(XUI_HOST)" || { echo "XUI_HOST is required, e.g. make test-panel XUI_HOST=http://127.0.0.1:2053"; echo "throwaway panel: docker run -d --name 3xui_local -p 2053:2053 ghcr.io/mhsanaei/3x-ui:v3.8.5"; exit 1; }
+	go test -tags panel -count=1 -run TestPanel ./internal/handler/ -v
 
 ## cover: Run tests with coverage report
 cover:

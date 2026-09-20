@@ -35,6 +35,10 @@ Thumbs.db
 .claude/
 CLAUDE.md
 
+# Codex (config.toml carries panel credentials; AGENTS.md mirrors CLAUDE.md)
+.codex/
+AGENTS.md
+
 # Local bug notes / working docs (may contain private infra details)
 BUG-*.md
 

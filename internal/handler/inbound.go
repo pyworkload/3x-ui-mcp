@@ -313,24 +313,40 @@ func normalizeInboundPatchKeys(in map[string]any) map[string]any {
 	return out
 }
 
-// inboundBaseFromResponse turns a GetInbound response obj into a map of just
-// the writable fields. Round-tripping through xui.Inbound strips any runtime
-// fields (e.g. clientStats) that must not be echoed back into the update body.
+// inboundRuntimeFields are the keys a GetInbound response carries that the
+// update endpoint computes itself and must not be echoed back: the per-client
+// traffic rows, the inbound's own counters (echoing them would roll back the
+// bytes accrued between our read and our write), the reset bookkeeping, and
+// the two decorations the API layer adds but never persists.
+var inboundRuntimeFields = []string{
+	"clientStats",
+	"up",
+	"down",
+	"lastTrafficResetTime",
+	"originNodeGuid",
+	"fallbackParent",
+}
+
+// inboundBaseFromResponse turns a GetInbound response obj into the base of an
+// update body. Everything the panel returned is carried over except the
+// runtime fields above — a blacklist, not a whitelist, because the panel's
+// update endpoint is a full replace and any field this code fails to send is
+// reset in the database. A struct here would silently drop each new column the
+// panel grows (v3.8.x added shareAddr, shareAddrStrategy, subSortIndex,
+// disableFlow, trafficReset and trafficResetDay), so the JSON is kept as a map.
 func inboundBaseFromResponse(obj json.RawMessage) (map[string]any, error) {
 	if len(obj) == 0 || string(obj) == "null" {
 		return nil, fmt.Errorf("empty inbound response")
 	}
-	var in xui.Inbound
-	if err := json.Unmarshal(obj, &in); err != nil {
+	var m map[string]any
+	if err := json.Unmarshal(obj, &m); err != nil {
 		return nil, fmt.Errorf("parsing current inbound: %w", err)
 	}
-	b, err := json.Marshal(in)
-	if err != nil {
-		return nil, fmt.Errorf("remarshal inbound: %w", err)
+	if len(m) == 0 {
+		return nil, fmt.Errorf("empty inbound response")
 	}
-	var m map[string]any
-	if err := json.Unmarshal(b, &m); err != nil {
-		return nil, fmt.Errorf("inbound to map: %w", err)
+	for _, key := range inboundRuntimeFields {
+		delete(m, key)
 	}
 	return m, nil
 }
