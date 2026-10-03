@@ -238,6 +238,7 @@ address. One client can be attached to several inbounds at once.
 | ` + "`comment`" + ` | Free-text note |
 | ` + "`limitHwid`" + ` | How many devices may register a hardware ID; 0 means unlimited |
 | ` + "`resetDay`" + ` / ` + "`resetMax`" + ` | Calendar day of the month the quota renews (1-31, 0 keeps the day-interval mode of ` + "`reset`" + `) and how many renewals are allowed (0 = unlimited) |
+| ` + "`resetWeekday`" + ` | Weekly renewal on a fixed weekday, 1-7 (Mon-Sun), 0 = off (panel v3.9.0+). Exclusive with ` + "`reset`" + ` and ` + "`resetDay`" + `; ` + "`update_client`" + ` clears those when switching to weekly, and clears the weekday when switching back. ` + "`preview_client_renewal`" + ` shows the resulting dates |
 | ` + "`trafficReset`" + ` / ` + "`trafficResetDay`" + ` | Per-client reset cycle (` + "`never`/`hourly`/`daily`/`weekly`/`monthly`" + `) and the day it fires, independent of the inbound's own |
 | ` + "`reverse`" + ` | VLESS simple reverse proxy, an object holding one ` + "`tag`" + `. The tool parameter is ` + "`reverse_tag`" + `, and an empty string clears it |
 | ` + "`secret`" + ` / ` + "`adTag`" + ` | MTProto per-client secret and the advertising tag from @MTProxybot. ` + "`adTag`" + ` must be exactly 32 hex characters |

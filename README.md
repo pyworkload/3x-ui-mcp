@@ -26,7 +26,7 @@ MCP (Model Context Protocol) server for [3x-ui](https://github.com/MHSanaei/3x-u
 
 ## Features
 
-- **The whole panel API** — 167 tools across inbounds, clients, groups, hosts, nodes, routing, balancers, geodata, metrics, tokens and maintenance. Everything 3x-ui exposes except four file-transfer and node-sync routes (3x-ui v3.3.0+ — see [Panel versions](#panel-versions)).
+- **The whole panel API** — 169 tools across inbounds, clients, groups, hosts, nodes, routing, balancers, geodata, metrics, tokens and maintenance. Everything 3x-ui exposes except four file-transfer and node-sync routes (3x-ui v3.3.0+ — see [Panel versions](#panel-versions)).
 - **Two auth modes** — session login with CSRF, or a Bearer API token (`XUI_API_TOKEN`), with transparent re-authentication and CSRF refresh when either goes stale.
 - **Email-keyed clients** — one client attaches to several inbounds; bulk create, adjust, enable and delete, plus server-side paging over large panels.
 - **Annotated tools** — every tool declares its effect, so an MCP client can tell a read-only call from a destructive one before running it.
@@ -185,11 +185,11 @@ cp -r skills/* .claude/skills/       # this project only
   that the token was refused; with the token alone, the call fails with an error
   naming it. A wrong `XUI_BASE_PATH` still 404s, so the two are now tellable apart.
 
-**Narrowing the toolset:** all 167 tool schemas together occupy roughly 28k tokens
+**Narrowing the toolset:** all 169 tool schemas together occupy roughly 29k tokens
 of model context in every session — worth narrowing. `XUI_TOOLSETS` loads only
 the groups you need: `inbounds`, `clients`, `server`, `xray`, `metrics`,
 `groups`, `geodata`, `hosts`, `nodes`, `tokens`, `providers`, `maintenance`, or
-`all`. `XUI_TOOLSETS=clients,metrics` leaves 45 tools at about 7k tokens. An
+`all`. `XUI_TOOLSETS=clients,metrics` leaves 47 tools at about 7.5k tokens. An
 unknown name fails at startup rather than silently loading nothing.
 
 ## Panel versions
@@ -218,6 +218,7 @@ version listed:
 | Geodata, HWID devices, `get_clients_by_telegram_id`, `set_inbound_sub_sort_index` | v3.7.0 |
 | Subscription balancers, PIA, `reload_node_mtls_client`, and token `scope`/`expires_at` | v3.7.0 |
 | `validate_regex`, `get_factory_defaults`, `get_panel_update_status`, `get_amneziawg_logs` | v3.7.0 |
+| `preview_client_renewal`, the `reset_weekday` client parameter | v3.9.0 |
 
 The last two rows are bounded by the panel's own generated `openapi.json`, which
 only starts at v3.5.0 — some of those routes may predate it.
@@ -236,7 +237,17 @@ the MTProto, WireGuard and AmneziaWG peer settings — have parameters of their
 own on both `add_client` and `update_client`. The full list is in the
 `xui://docs/client-fields` resource.
 
-Tested against **v3.8.5**, the current panel release. Every tool was exercised
+**v3.9.0 added one route** — the renewal preview — and changed what an inbound
+update may touch: `inbounds/update` now keeps the stored client list and the
+inbound's `enable` flag whatever the body says, so `update_inbound` can no longer
+switch an inbound off or edit its clients. Use `set_inbound_enable` and the
+client tools for those; on older panels they were already the safer route. The
+same release added weekly quota renewal (`reset_weekday`, exclusive with `reset`
+and `reset_day` — `update_client` clears the mode being left), and refuses a
+private or loopback target in `get_remote_cert_hash` unless `allow_private` is
+set.
+
+Tested against **v3.9.0**, the current panel release (and before it v3.8.5). Every tool was exercised
 against a live panel: the reads, the writes, the node tools against a second
 panel registered as a node, and the outbound-subscription tools against a URL
 that really serves a list. Four need a configuration this server cannot conjure
@@ -284,7 +295,7 @@ before the rest.
 Clients are email-keyed entities that can be attached to several inbounds at once.
 
 <details>
-<summary><b>39 tools</b> — CRUD by email, attach/detach, bulk operations, traffic, devices, online state</summary>
+<summary><b>41 tools</b> — CRUD by email, attach/detach, bulk operations, traffic, devices, online state</summary>
 
 | Tool | Description |
 |---|---|
@@ -310,6 +321,8 @@ Clients are email-keyed entities that can be attached to several inbounds at onc
 | `update_client_traffic` | Set specific upload/download byte counters for a client |
 | `get_subscription_links` | Connection URLs served under a subscription ID, as JSON |
 | `get_client_links` | Connection URLs for one client by email, one per inbound |
+| `get_happ_link` | Encrypted `happ://crypt5` link wrapping a client's subscription, for the Happ app |
+| `preview_client_renewal` | When a quota renewal schedule fires next, in the panel's time zone; saves nothing |
 | `get_clients_by_telegram_id` | Find clients by Telegram user ID |
 | `list_client_devices` | HWID devices registered for a client |
 | `delete_client_device` | Remove one registered device, freeing an HWID slot |

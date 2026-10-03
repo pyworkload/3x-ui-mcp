@@ -154,8 +154,16 @@ func (c *Client) CertHash(ctx context.Context, certFile, certContent string) (*R
 
 // RemoteCertHash runs `xray tls ping` against a remote server and returns its
 // live leaf certificate hashes.
-func (c *Client) RemoteCertHash(ctx context.Context, server string) (*Response, error) {
-	return c.PostForm(ctx, "panel/api/server/getRemoteCertHash", url.Values{"server": {server}})
+//
+// From v3.9.0 the panel refuses private and loopback targets unless
+// allowPrivate is set (it answers with obj.privateTarget=true). Older panels
+// ignore the field.
+func (c *Client) RemoteCertHash(ctx context.Context, server string, allowPrivate bool) (*Response, error) {
+	form := url.Values{"server": {server}}
+	if allowPrivate {
+		form.Set("allowPrivate", "true")
+	}
+	return c.PostForm(ctx, "panel/api/server/getRemoteCertHash", form)
 }
 
 // NewEchCert generates an ECH keypair and config list for one SNI.
