@@ -91,6 +91,16 @@ For a single client, `update_client` overlays only the fields passed and preserv
 everything else, the UUID above all. Never rebuild a client to change one field:
 `delete_client` + `add_client` issues a new UUID and breaks the user's app.
 
+Automatic renewal is a schedule on the client, not a job you run: `reset`
+(every N days), `reset_day` (a day of the month) or, from panel v3.9.0,
+`reset_weekday` (1-7, Mon-Sun), capped by `reset_max`. Weekly cannot be combined
+with the other two; `update_client` clears the mode being left. Before promising
+anyone a date, ask the panel — it computes in its own time zone:
+
+```
+preview_client_renewal email="alice" reset_weekday=1
+```
+
 `bulk_enable_clients` / `bulk_disable_clients` suspend without deleting — the right
 move for non-payment, since re-enabling restores the same credentials.
 

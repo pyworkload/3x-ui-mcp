@@ -17,6 +17,31 @@ Two things a reader of this file usually wants:
 
 ## [Unreleased]
 
+Panel v3.9.0 support — **169 tools**.
+
+### Added
+
+- `preview_client_renewal` — when a quota renewal schedule fires next, computed
+  by the panel in its own time zone, without saving anything. Given an email it
+  starts from that client's stored schedule and renewal count. Panel v3.9.0+.
+- `get_happ_link` — the encrypted `happ://crypt5` link wrapping a client's
+  subscription, for the Happ app. The route existed in v3.8.5 already and was
+  missed by the route audit behind 0.5.0's "fully wrapped" claim. It is keyed by
+  the client's row id, so the tool resolves the id from the email.
+- `reset_weekday` on `add_client` and `update_client` — v3.9.0's weekly quota
+  renewal (1-7, Mon-Sun). The panel refuses it next to `reset` or `reset_day`,
+  so `update_client` clears the fields of the mode being left unless the caller
+  passed them explicitly.
+- `allow_private` on `get_remote_cert_hash`: from v3.9.0 the panel refuses a
+  private or loopback target without it.
+
+### Changed
+
+- `update_inbound` no longer advertises `enable` or client edits through
+  `settings`. From v3.9.0 the panel keeps the stored client list and enable flag
+  on every inbound update and ignores what was sent, without an error; the
+  description now points to `set_inbound_enable` and the client tools.
+
 ## [0.5.0] - 2026-09-21
 
 Panel v3.8.5 support — **167 tools**, and the panel's API is now fully wrapped.

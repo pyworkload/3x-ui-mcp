@@ -29,7 +29,7 @@ const instructions = `Control a 3x-ui panel (Xray/V2Ray) over its HTTP API. Tool
 
 Conventions that are easy to get wrong:
 - Clients are keyed by email, not UUID. add_client attaches a new client to inbound IDs; update_client reads the current record first and overlays only the fields you pass, so anything you omit — the UUID above all — survives.
-- update_inbound and update_outbound_sub follow the same read-modify-write contract: pass only what changes.
+- update_inbound and update_outbound_sub follow the same read-modify-write contract: pass only what changes. From panel v3.9.0 update_inbound cannot change an inbound's clients or enable flag — use the client tools and set_inbound_enable.
 - Routing rules are edited through the whole Xray template, so add/update/remove_routing_rule rewrite it; update_xray_template replaces it outright.
 - A balancer override from set_balancer_override lives in the running core only — Xray forgets it on restart.
 - "Subscription" means two different things: create/refresh/list_outbound_subs pull remote outbound lists into this panel, while get_subscription_links returns the links this panel serves to its own users.

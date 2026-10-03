@@ -155,6 +155,20 @@ func (c *Client) GetClientLinks(ctx context.Context, email string) (*Response, e
 	return c.Get(ctx, clientsBase+"links/"+url.PathEscape(email))
 }
 
+// GetHappLink returns an encrypted happ://crypt5 link wrapping a client's
+// subscription URL. The route is keyed by the client's numeric row id, not its
+// email, and only answers when the panel's happLinkEnable setting is on and the
+// client has a subId.
+func (c *Client) GetHappLink(ctx context.Context, clientID int) (*Response, error) {
+	return c.Post(ctx, fmt.Sprintf(clientsBase+"happLink/%d", clientID))
+}
+
+// PreviewClientRenewal asks the panel when a renewal schedule would next fire,
+// computed in the panel's own time zone (panel v3.9.0+). Nothing is stored.
+func (c *Client) PreviewClientRenewal(ctx context.Context, req ClientRenewalPreview) (*Response, error) {
+	return c.PostJSON(ctx, clientsBase+"renewalPreview", req)
+}
+
 // UpdateClientTraffic sets specific upload/download byte values for a client.
 func (c *Client) UpdateClientTraffic(ctx context.Context, email string, upload, download int64) (*Response, error) {
 	return c.PostJSON(ctx, clientsBase+"updateTraffic/"+url.PathEscape(email), map[string]int64{

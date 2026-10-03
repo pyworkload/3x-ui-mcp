@@ -83,6 +83,7 @@ func registerInboundTools(s *server.MCPServer, client *xui.Client) {
 		mcp.WithDescription("Update an existing inbound. Pass only the fields you want to change — unspecified fields are preserved (read-modify-write against the current inbound). "+
 			"Accepted fields: remark, port, protocol, listen, enable, settings, stream_settings (aka streamSettings), sniffing, expiry_time (aka expiryTime), total, tag. "+
 			"snake_case and camelCase names are both accepted. "+
+			"From panel v3.9.0 the panel keeps the stored client list (settings.clients) and enable flag no matter what is sent — use add_client/update_client/delete_client/attach_client for clients and set_inbound_enable for on/off. "+
 			"Refuses to write back if the merged result would have port=0 or empty protocol (which would silently disable the inbound)."),
 		mcp.WithNumber("id",
 			mcp.Required(),
@@ -90,7 +91,7 @@ func registerInboundTools(s *server.MCPServer, client *xui.Client) {
 		),
 		mcp.WithString("data",
 			mcp.Required(),
-			mcp.Description("JSON object with fields to change. Example: {\"remark\":\"new name\",\"enable\":false}"),
+			mcp.Description("JSON object with fields to change. Example: {\"remark\":\"new name\",\"port\":8443}"),
 		),
 	), h.update)
 

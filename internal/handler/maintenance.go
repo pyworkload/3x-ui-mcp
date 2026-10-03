@@ -46,6 +46,9 @@ func registerMaintenanceTools(s *server.MCPServer, client *xui.Client) {
 			mcp.Required(),
 			mcp.Description("Target as host:port, e.g. example.com:443"),
 		),
+		mcp.WithBoolean("allow_private",
+			mcp.Description("Allow a private or loopback target. From panel v3.9.0 such targets are refused without it"),
+		),
 	), h.remoteCertHash)
 
 	s.AddTool(mcp.NewTool("generate_ech_cert",
@@ -181,7 +184,7 @@ func (h *maintenanceHandler) remoteCertHash(ctx context.Context, req mcp.CallToo
 	if err != nil {
 		return mcp.NewToolResultError("server is required, as host:port"), nil
 	}
-	return toResult(h.client.RemoteCertHash(ctx, target))
+	return toResult(h.client.RemoteCertHash(ctx, target, req.GetBool("allow_private", false)))
 }
 
 func (h *maintenanceHandler) echCert(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {

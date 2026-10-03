@@ -578,3 +578,130 @@ func TestListClientsPaged_OmitsEmptyFilters(t *testing.T) {
 		}
 	}
 }
+
+// From v3.9.0 the panel rejects resetWeekday alongside reset or resetDay, and
+// the stored record carries the monthly day (7), so switching to weekly by
+// passing reset_weekday alone has to clear the monthly fields itself.
+func TestUpdateClient_SwitchToWeeklyClearsMonthlyRenewal(t *testing.T) {
+	h, body := updateClientHandler(t)
+
+	result, err := h.update(context.Background(), req(map[string]any{
+		"email":         "user@example.com",
+		"reset_weekday": float64(1),
+	}))
+	if err != nil || result.IsError {
+		t.Fatalf("update failed: %v %+v", err, result)
+	}
+
+	got := *body
+	if got["resetWeekday"] != float64(1) {
+		t.Errorf("resetWeekday = %v, want 1", got["resetWeekday"])
+	}
+	if got["resetDay"] != float64(0) || got["reset"] != float64(0) {
+		t.Errorf("reset/resetDay = %v/%v, want both cleared to 0", got["reset"], got["resetDay"])
+	}
+	if got["resetMax"] != float64(4) {
+		t.Errorf("resetMax = %v, want preserved 4 — it is not a mode field", got["resetMax"])
+	}
+}
+
+// A field the caller supplied is theirs: the mode switch must not overwrite
+// it, so an invalid combination reaches the panel and is reported from there.
+func TestUpdateClient_RenewalModeSwitchKeepsExplicitFields(t *testing.T) {
+	h, body := updateClientHandler(t)
+
+	result, err := h.update(context.Background(), req(map[string]any{
+		"email":         "user@example.com",
+		"reset_weekday": float64(3),
+		"reset_day":     float64(9),
+	}))
+	if err != nil || result.IsError {
+		t.Fatalf("update failed: %v %+v", err, result)
+	}
+	if got := *body; got["resetDay"] != float64(9) || got["resetWeekday"] != float64(3) {
+		t.Errorf("resetDay/resetWeekday = %v/%v, want the supplied 9/3", got["resetDay"], got["resetWeekday"])
+	}
+}
+
+func TestSwitchRenewalMode_LeavingWeeklyClearsTheWeekday(t *testing.T) {
+	body := map[string]any{"reset": 0, "resetDay": 15, "resetWeekday": 5}
+	switchRenewalMode(body, func(p string) bool { return p == "reset_day" })
+	if body["resetWeekday"] != 0 {
+		t.Errorf("resetWeekday = %v, want 0 after switching to monthly", body["resetWeekday"])
+	}
+
+	// A pre-3.9.0 record has no resetWeekday; the switch must not invent one.
+	old := map[string]any{"resetDay": 15}
+	switchRenewalMode(old, func(p string) bool { return p == "reset_day" })
+	if _, ok := old["resetWeekday"]; ok {
+		t.Error("resetWeekday added to a record that never had it")
+	}
+}
+
+// The happLink route takes the client's numeric row id, which the tool has to
+// read off the record since clients are keyed by email everywhere else.
+func TestGetHappLink_ResolvesTheRowIDFromEmail(t *testing.T) {
+	var hit string
+	h, _ := newClientHandler(t, func(w http.ResponseWriter, r *http.Request) {
+		if writeCSRF(w, r) {
+			return
+		}
+		switch r.URL.Path {
+		case "/login":
+			_ = json.NewEncoder(w).Encode(map[string]any{"success": true})
+		case "/panel/api/clients/get/user@example.com":
+			_, _ = w.Write([]byte(`{"success":true,"obj":{"client":` + sampleClientRecord + `,"inboundIds":[2]}}`))
+		case "/panel/api/clients/happLink/43":
+			hit = r.Method
+			_, _ = w.Write([]byte(`{"success":true,"obj":{"encryptedLink":"happ://crypt5/x"}}`))
+		default:
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+	})
+
+	result, err := h.getHappLink(context.Background(), req(map[string]any{"email": "user@example.com"}))
+	if err != nil || result.IsError {
+		t.Fatalf("getHappLink failed: %v %+v", err, result)
+	}
+	if hit != http.MethodPost {
+		t.Errorf("happLink/43 method = %q, want POST", hit)
+	}
+}
+
+// With an email the preview starts from the stored schedule and the traffic
+// row's renewal count; supplied parameters override field by field.
+func TestPreviewClientRenewal_DefaultsFromTheClient(t *testing.T) {
+	var got xui.ClientRenewalPreview
+	h, _ := newClientHandler(t, func(w http.ResponseWriter, r *http.Request) {
+		if writeCSRF(w, r) {
+			return
+		}
+		switch r.URL.Path {
+		case "/login":
+			_ = json.NewEncoder(w).Encode(map[string]any{"success": true})
+		case "/panel/api/clients/get/user@example.com":
+			_, _ = w.Write([]byte(`{"success":true,"obj":{"client":` + sampleClientRecord + `,"inboundIds":[2]}}`))
+		case "/panel/api/clients/traffic/user@example.com":
+			_, _ = w.Write([]byte(`{"success":true,"obj":{"email":"user@example.com","resetCount":2}}`))
+		case "/panel/api/clients/renewalPreview":
+			if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+				t.Errorf("decoding preview body: %v", err)
+			}
+			_, _ = w.Write([]byte(`{"success":true,"obj":{"timeZone":"UTC","canRenew":true}}`))
+		default:
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+	})
+
+	result, err := h.previewRenewal(context.Background(), req(map[string]any{
+		"email":       "user@example.com",
+		"expiry_time": float64(1893456000000),
+	}))
+	if err != nil || result.IsError {
+		t.Fatalf("previewRenewal failed: %v %+v", err, result)
+	}
+	want := xui.ClientRenewalPreview{ExpiryTime: 1893456000000, ResetDay: 7, ResetMax: 4, ResetCount: 2}
+	if got != want {
+		t.Errorf("preview body = %+v, want %+v", got, want)
+	}
+}

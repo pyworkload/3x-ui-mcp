@@ -23,10 +23,14 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/pyworkload/3x-ui-mcp/internal/config"
 	"github.com/pyworkload/3x-ui-mcp/internal/xui"
+
+	"github.com/mark3labs/mcp-go/mcp"
 )
 
 func panelClient(t *testing.T) *xui.Client {
@@ -438,3 +442,63 @@ func mustJSON(v any) string {
 }
 
 func sameJSON(a, b any) bool { return mustJSON(a) == mustJSON(b) }
+
+// TestPanel_WeeklyRenewalSwitchesModes pins the v3.9.0 renewal contract: the
+// panel refuses resetWeekday next to reset/resetDay, so update_client has to
+// clear the mode being left — in both directions — or the switch fails. The
+// preview runs against the stored weekly schedule. Skipped below v3.9.0, whose
+// record has no resetWeekday column.
+func TestPanel_WeeklyRenewalSwitchesModes(t *testing.T) {
+	c := panelClient(t)
+	ctx := context.Background()
+	id := newInbound(t, c, 24106)
+	h := &clientHandler{client: c}
+
+	const email = "mcp-itest-weekly"
+	t.Cleanup(func() {
+		if _, err := c.DeleteClient(context.Background(), email, false); err != nil {
+			t.Logf("cleaning up client %s: %v", email, err)
+		}
+	})
+
+	created, err := h.add(ctx, req(map[string]any{
+		"inbound_ids": []any{float64(id)},
+		"email":       email,
+		"sub_id":      "mcp-itest-weekly-sub",
+		"reset_day":   float64(7),
+		"expiry_time": float64(time.Now().Add(72 * time.Hour).UnixMilli()),
+	}))
+	if err != nil || created.IsError {
+		t.Fatalf("add_client: %v %+v", err, created)
+	}
+	if _, ok := clientRecord(t, c, email)["resetWeekday"]; !ok {
+		t.Skip("panel predates weekly renewal (v3.9.0)")
+	}
+
+	updated, err := h.update(ctx, req(map[string]any{"email": email, "reset_weekday": float64(2)}))
+	if err != nil || updated.IsError {
+		t.Fatalf("update_client to weekly: %v %+v", err, updated)
+	}
+	got := clientRecord(t, c, email)
+	if got["resetWeekday"] != float64(2) || got["resetDay"] != float64(0) {
+		t.Errorf("after switching to weekly, resetWeekday/resetDay = %v/%v, want 2/0", got["resetWeekday"], got["resetDay"])
+	}
+
+	preview, err := h.previewRenewal(ctx, req(map[string]any{"email": email}))
+	if err != nil || preview.IsError {
+		t.Fatalf("preview_client_renewal: %v %+v", err, preview)
+	}
+	text := preview.Content[0].(mcp.TextContent).Text
+	if !strings.Contains(text, "suggestedExpiry") || !strings.Contains(text, "canRenew") {
+		t.Errorf("preview missing the schedule fields: %s", text)
+	}
+
+	updated, err = h.update(ctx, req(map[string]any{"email": email, "reset_day": float64(10)}))
+	if err != nil || updated.IsError {
+		t.Fatalf("update_client back to monthly: %v %+v", err, updated)
+	}
+	got = clientRecord(t, c, email)
+	if got["resetWeekday"] != float64(0) || got["resetDay"] != float64(10) {
+		t.Errorf("after switching to monthly, resetWeekday/resetDay = %v/%v, want 0/10", got["resetWeekday"], got["resetDay"])
+	}
+}

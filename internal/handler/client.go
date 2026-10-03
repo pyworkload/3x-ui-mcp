@@ -378,6 +378,41 @@ func registerClientTools(s *server.MCPServer, client *xui.Client) {
 		),
 	), h.getClientLinks)
 
+	s.AddTool(mcp.NewTool("get_happ_link",
+		readsPanel,
+		mcp.WithDescription("Get an encrypted happ://crypt5 link that wraps a client's subscription URL, for the Happ app. The panel answers only when its happLinkEnable setting is on, subscriptions are enabled and the client has a subId; otherwise it reports 'happ link unavailable' without saying which."),
+		mcp.WithString("email",
+			mcp.Required(),
+			mcp.Description("Client email (the client key)"),
+		),
+	), h.getHappLink)
+
+	s.AddTool(mcp.NewTool("preview_client_renewal",
+		readsPanel,
+		mcp.WithDescription("Preview when a quota renewal schedule fires next, computed in the panel's time zone: the next renewal, the expiry it leads to, and an expiry suggestion for calendar modes. Nothing is saved. Pass email to start from that client's stored schedule and renewal count, then override any field. Panel v3.9.0+"),
+		mcp.WithString("email",
+			mcp.Description("Client whose stored expiry, reset, reset_day, reset_weekday, reset_max and renewal count are the defaults"),
+		),
+		mcp.WithNumber("expiry_time",
+			mcp.Description("Current expiry in Unix ms; 0 = none, negative = delayed start"),
+		),
+		mcp.WithNumber("reset",
+			mcp.Description("Renewal interval in days, 0 = off"),
+		),
+		mcp.WithNumber("reset_day",
+			mcp.Description("Monthly renewal day 1-31, 0 = off"),
+		),
+		mcp.WithNumber("reset_weekday",
+			mcp.Description("Weekly renewal weekday 1-7 (Mon-Sun), 0 = off. Cannot be combined with reset or reset_day"),
+		),
+		mcp.WithNumber("reset_max",
+			mcp.Description("Max renewals, 0 = unlimited"),
+		),
+		mcp.WithNumber("reset_count",
+			mcp.Description("Renewals that have already fired"),
+		),
+	), h.previewRenewal)
+
 	s.AddTool(mcp.NewTool("get_clients_by_telegram_id",
 		readsPanel,
 		mcp.WithDescription("Look up clients by Telegram user ID. Answers with an array, since several clients can share one Telegram account."),
@@ -589,6 +624,84 @@ func (h *clientHandler) getClientLinks(ctx context.Context, req mcp.CallToolRequ
 	return toResult(h.client.GetClientLinks(ctx, email))
 }
 
+// clientRecord fetches a client and decodes the record inside the panel's
+// {client, inboundIds, ...} wrapper.
+func (h *clientHandler) clientRecord(ctx context.Context, email string) (map[string]any, *mcp.CallToolResult) {
+	resp, err := h.client.GetClient(ctx, email)
+	if err != nil {
+		return nil, mcp.NewToolResultError(err.Error())
+	}
+	if !resp.Success {
+		return nil, mcp.NewToolResultError("API error: " + resp.Msg)
+	}
+	var wrap struct {
+		Client map[string]any `json:"client"`
+	}
+	if err := json.Unmarshal(resp.Obj, &wrap); err != nil || len(wrap.Client) == 0 {
+		return nil, mcp.NewToolResultError("could not read client record for " + email)
+	}
+	return wrap.Client, nil
+}
+
+func (h *clientHandler) getHappLink(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	email, err := req.RequireString("email")
+	if err != nil {
+		return mcp.NewToolResultError("email is required"), nil
+	}
+	// The route takes the row id; the tools key clients by email.
+	rec, fail := h.clientRecord(ctx, email)
+	if fail != nil {
+		return fail, nil
+	}
+	id, ok := rec["id"].(float64)
+	if !ok || id < 1 {
+		return mcp.NewToolResultError("client record for " + email + " has no numeric id"), nil
+	}
+	return toResult(h.client.GetHappLink(ctx, int(id)))
+}
+
+func (h *clientHandler) previewRenewal(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	var body xui.ClientRenewalPreview
+	if email := req.GetString("email", ""); email != "" {
+		rec, fail := h.clientRecord(ctx, email)
+		if fail != nil {
+			return fail, nil
+		}
+		num := func(key string) float64 { n, _ := rec[key].(float64); return n }
+		body = xui.ClientRenewalPreview{
+			ExpiryTime:   int64(num("expiryTime")),
+			Reset:        int(num("reset")),
+			ResetDay:     int(num("resetDay")),
+			ResetWeekday: int(num("resetWeekday")),
+			ResetMax:     int(num("resetMax")),
+		}
+		// The renewal count lives on the traffic row, not the client record.
+		if t, err := h.client.GetClientTraffic(ctx, email); err == nil && t.Success {
+			var traffic struct {
+				ResetCount int `json:"resetCount"`
+			}
+			if json.Unmarshal(t.Obj, &traffic) == nil {
+				body.ResetCount = traffic.ResetCount
+			}
+		}
+	}
+	args := req.GetArguments()
+	override := func(param string, dst *int) {
+		if _, ok := args[param]; ok {
+			*dst = int(req.GetFloat(param, 0))
+		}
+	}
+	if _, ok := args["expiry_time"]; ok {
+		body.ExpiryTime = int64(req.GetFloat("expiry_time", 0))
+	}
+	override("reset", &body.Reset)
+	override("reset_day", &body.ResetDay)
+	override("reset_weekday", &body.ResetWeekday)
+	override("reset_max", &body.ResetMax)
+	override("reset_count", &body.ResetCount)
+	return toResult(h.client.PreviewClientRenewal(ctx, body))
+}
+
 // buildClientConfig assembles a ClientConfig from the request params (no auto-generation).
 func (h *clientHandler) buildClientConfig(req mcp.CallToolRequest) xui.ClientConfig {
 	return xui.ClientConfig{
@@ -609,6 +722,7 @@ func (h *clientHandler) buildClientConfig(req mcp.CallToolRequest) xui.ClientCon
 		Reset:      int(req.GetFloat("reset", 0)),
 
 		ResetDay:        int(req.GetFloat("reset_day", 0)),
+		ResetWeekday:    int(req.GetFloat("reset_weekday", 0)),
 		ResetMax:        int(req.GetFloat("reset_max", 0)),
 		TrafficReset:    req.GetString("traffic_reset", ""),
 		TrafficResetDay: int(req.GetFloat("traffic_reset_day", 0)),
@@ -698,6 +812,9 @@ func clientFieldParams() []mcp.ToolOption {
 		mcp.WithNumber("reset_day",
 			mcp.Description("Calendar day of the month the traffic quota renews, 1-31. 0 keeps the interval mode set by 'reset'"),
 		),
+		mcp.WithNumber("reset_weekday",
+			mcp.Description("Weekday the quota renews, 1-7 (Mon-Sun); 0 disables weekly renewal. Cannot be combined with 'reset' or 'reset_day' — update_client zeroes those when switching to weekly. Panel v3.9.0+"),
+		),
 		mcp.WithNumber("reset_max",
 			mcp.Description("How many times the quota may auto-renew, 0 = unlimited"),
 		),
@@ -765,6 +882,7 @@ var clientStringParams = map[string]string{
 var clientIntParams = map[string]string{
 	"limit_hwid":        "limitHwid",
 	"reset_day":         "resetDay",
+	"reset_weekday":     "resetWeekday",
 	"reset_max":         "resetMax",
 	"traffic_reset_day": "trafficResetDay",
 	"keep_alive":        "keepAlive",
@@ -827,6 +945,7 @@ func (h *clientHandler) update(ctx context.Context, req mcp.CallToolRequest) (*m
 			body[key] = int(req.GetFloat(param, 0))
 		}
 	}
+	switchRenewalMode(body, supplied)
 	// An empty list is dropped rather than sent as [], the same way
 	// clientBaseFromRecord treats one: the panel reads an absent allowedIPs as
 	// "keep the address this inbound already has".
@@ -849,6 +968,30 @@ func (h *clientHandler) update(ctx context.Context, req mcp.CallToolRequest) (*m
 
 	inboundIDs := req.GetIntSlice("inbound_ids", nil)
 	return toResult(h.client.UpdateClient(ctx, email, body, inboundIDs))
+}
+
+// switchRenewalMode clears the renewal fields of the mode the caller is leaving.
+// From v3.9.0 the panel rejects weekly renewal (resetWeekday) combined with
+// reset or resetDay, and the stored record carries whichever mode is current —
+// so switching a monthly client to weekly by passing only reset_weekday would
+// otherwise fail. A field the caller supplied explicitly is never overridden.
+func switchRenewalMode(body map[string]any, supplied func(string) bool) {
+	positive := func(key string) bool {
+		n, _ := body[key].(int)
+		return n > 0
+	}
+	if supplied("reset_weekday") && positive("resetWeekday") {
+		for param, key := range map[string]string{"reset": "reset", "reset_day": "resetDay"} {
+			if !supplied(param) {
+				body[key] = 0
+			}
+		}
+	}
+	if !supplied("reset_weekday") && ((supplied("reset") && positive("reset")) || (supplied("reset_day") && positive("resetDay"))) {
+		if _, stored := body["resetWeekday"]; stored {
+			body["resetWeekday"] = 0
+		}
+	}
 }
 
 func (h *clientHandler) delete(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {

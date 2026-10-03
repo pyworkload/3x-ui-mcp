@@ -44,6 +44,7 @@ type ClientConfig struct {
 	// reads from inside the client object while clients/update reads it from
 	// the top level of the body (see the handler's update path).
 	ResetDay        int            `json:"resetDay,omitempty"`     // Calendar renewal day 1-31, 0 = interval mode
+	ResetWeekday    int            `json:"resetWeekday,omitempty"` // Weekly renewal weekday 1-7 (Mon-Sun), panel v3.9.0+
 	ResetMax        int            `json:"resetMax,omitempty"`     // Max auto-renews, 0 = unlimited
 	TrafficReset    string         `json:"trafficReset,omitempty"` // never|hourly|daily|weekly|monthly
 	TrafficResetDay int            `json:"trafficResetDay,omitempty"`
@@ -73,4 +74,16 @@ type ClientCreatePayload struct {
 // InboundSettings wraps the clients array within inbound settings JSON.
 type InboundSettings struct {
 	Clients []ClientConfig `json:"clients"`
+}
+
+// ClientRenewalPreview is the body of POST clients/renewalPreview: a renewal
+// schedule to evaluate. Every field is sent, since zero is meaningful (no
+// expiry, interval mode off, unlimited renewals).
+type ClientRenewalPreview struct {
+	ExpiryTime   int64 `json:"expiryTime"` // ms; negative = delayed start
+	Reset        int   `json:"reset"`      // interval in days
+	ResetDay     int   `json:"resetDay"`
+	ResetWeekday int   `json:"resetWeekday"`
+	ResetMax     int   `json:"resetMax"`
+	ResetCount   int   `json:"resetCount"` // renewals already fired
 }

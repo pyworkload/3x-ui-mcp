@@ -35,6 +35,9 @@ third-party guides, and quote the error text the logs actually produce.
   because that reissues the UUID and breaks the user's app.
 - **`update_inbound` and `update_outbound_sub` follow the same read-modify-write
   contract.** `set_inbound_fallbacks` does **not**: it replaces the whole list.
+  From panel v3.9.0 `update_inbound` silently keeps the inbound's clients and
+  `enable` flag — switch an inbound with `set_inbound_enable` and edit clients
+  with the client tools.
 - **Units bite.** Expiry is Unix **milliseconds** (0 = never, negative = a
   duration that starts on first use); stored `totalGB` is **bytes** despite the
   name, while tool parameters called `total_gb` take GB.
