@@ -10,7 +10,7 @@
 // Run against a throwaway panel — these tests create and delete inbounds:
 //
 //	docker run -d --name 3xui_local -p 127.0.0.1:2053:2053 \
-//	  -e XUI_INIT_WEB_BASE_PATH=/ ghcr.io/mhsanaei/3x-ui:v3.8.5
+//	  -e XUI_INIT_WEB_BASE_PATH=/ ghcr.io/mhsanaei/3x-ui:v3.10.2
 //	XUI_HOST=http://127.0.0.1:2053 go test -tags panel ./internal/handler/ -v
 //
 // XUI_USERNAME/XUI_PASSWORD default to the image's admin/admin.
@@ -19,9 +19,18 @@ package handler
 
 import (
 	"context"
+	"crypto/ecdh"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/base64"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"log/slog"
+	"math/big"
 	"os"
 	"strings"
 	"testing"
@@ -107,6 +116,40 @@ func newInbound(t *testing.T, c *xui.Client, port int) int {
 		})
 	})
 
+	var created struct {
+		ID int `json:"id"`
+	}
+	if err := json.Unmarshal(resp.Obj, &created); err != nil || created.ID == 0 {
+		t.Fatalf("no inbound id in the create response (%v): %s", err, resp.Obj)
+	}
+	t.Cleanup(func() {
+		if _, err := c.DeleteInbound(context.Background(), created.ID); err != nil {
+			t.Logf("cleaning up inbound %d: %v", created.ID, err)
+		}
+	})
+	return created.ID
+}
+
+// newWireguardInbound creates a WireGuard inbound and returns its id. From v3.10.0
+// a client's peer columns are written only through such an inbound, so a test
+// that edits them has to attach the client to one. It is deleted when the test ends.
+func newWireguardInbound(t *testing.T, c *xui.Client, port int) int {
+	t.Helper()
+	key, err := ecdh.X25519().GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("generating a WireGuard key: %v", err)
+	}
+	resp := call(t, "create_inbound", func() (*xui.Response, error) {
+		return c.CreateInbound(context.Background(), map[string]any{
+			"remark":         "mcp-itest-wg",
+			"port":           port,
+			"protocol":       "wireguard",
+			"settings":       fmt.Sprintf(`{"mtu":1420,"secretKey":%q,"peers":[],"noKernelTun":true}`, base64.StdEncoding.EncodeToString(key.Bytes())),
+			"streamSettings": "",
+			"sniffing":       `{"enabled":false}`,
+			"enable":         true,
+		})
+	})
 	var created struct {
 		ID int `json:"id"`
 	}
@@ -321,6 +364,7 @@ func TestPanel_ClientFieldParametersReachTheirColumns(t *testing.T) {
 	c := panelClient(t)
 	ctx := context.Background()
 	id := newInbound(t, c, 24105)
+	wg := newWireguardInbound(t, c, 24108)
 	h := &clientHandler{client: c}
 
 	const email = "mcp-itest-fields"
@@ -331,7 +375,7 @@ func TestPanel_ClientFieldParametersReachTheirColumns(t *testing.T) {
 	})
 
 	created, err := h.add(ctx, req(map[string]any{
-		"inbound_ids":       []any{float64(id)},
+		"inbound_ids":       []any{float64(id), float64(wg)},
 		"email":             email,
 		"limit_hwid":        float64(3),
 		"reset_day":         float64(7),
@@ -500,5 +544,125 @@ func TestPanel_WeeklyRenewalSwitchesModes(t *testing.T) {
 	got = clientRecord(t, c, email)
 	if got["resetWeekday"] != float64(0) || got["resetDay"] != float64(10) {
 		t.Errorf("after switching to monthly, resetWeekday/resetDay = %v/%v, want 0/10", got["resetWeekday"], got["resetDay"])
+	}
+}
+
+// panelAtLeast reports whether the panel's own version is major.minor or newer.
+func panelAtLeast(t *testing.T, c *xui.Client, major, minor int) bool {
+	t.Helper()
+	resp := call(t, "server_status", func() (*xui.Response, error) { return c.ServerStatus(context.Background()) })
+	var status struct {
+		PanelVersion string `json:"panelVersion"`
+	}
+	if err := json.Unmarshal(resp.Obj, &status); err != nil {
+		t.Fatalf("parsing server status: %v", err)
+	}
+	var gotMajor, gotMinor int
+	if _, err := fmt.Sscanf(strings.TrimPrefix(status.PanelVersion, "v"), "%d.%d", &gotMajor, &gotMinor); err != nil {
+		t.Fatalf("unparsable panelVersion %q: %v", status.PanelVersion, err)
+	}
+	return gotMajor > major || gotMajor == major && gotMinor >= minor
+}
+
+// selfSignedPEM returns an inline certificate and key for a TLS inbound, so a
+// test inbound needs no files inside the panel's container.
+func selfSignedPEM(t *testing.T) (certPEM, keyPEM string) {
+	t.Helper()
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("generating a key: %v", err)
+	}
+	tmpl := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject:      pkix.Name{CommonName: "mcp-itest.local"},
+		DNSNames:     []string{"mcp-itest.local"},
+		NotBefore:    time.Now().Add(-time.Hour),
+		NotAfter:     time.Now().Add(24 * time.Hour),
+	}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
+	if err != nil {
+		t.Fatalf("self-signing: %v", err)
+	}
+	keyDER, err := x509.MarshalPKCS8PrivateKey(key)
+	if err != nil {
+		t.Fatalf("encoding the key: %v", err)
+	}
+	return string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})),
+		string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: keyDER}))
+}
+
+// MASQUE (v3.10.0) signs clients in with email and password. add_client sends
+// no password unless given one, so the panel has to mint it, and update_client
+// has to carry the minted one over rather than clear it — the same contract the
+// UUID has on VLESS.
+func TestPanel_MasqueClientKeepsMintedPassword(t *testing.T) {
+	c := panelClient(t)
+	ctx := context.Background()
+	// Below v3.10.0 the protocol validator answers a bare "request body failed
+	// validation", too generic to tell from a real refusal, so gate on the version.
+	if !panelAtLeast(t, c, 3, 10) {
+		t.Skip("panel predates MASQUE (v3.10.0)")
+	}
+	certPEM, keyPEM := selfSignedPEM(t)
+
+	stream := mustJSON(map[string]any{
+		"network":        "masque",
+		"security":       "tls",
+		"masqueSettings": map[string]any{"path": "/.well-known/masque/ip/*/*/"},
+		"tlsSettings": map[string]any{
+			"alpn":         []string{"h3"},
+			"certificates": []any{map[string]any{"certificate": strings.Split(strings.TrimSpace(certPEM), "\n"), "key": strings.Split(strings.TrimSpace(keyPEM), "\n")}},
+		},
+	})
+	resp, err := c.CreateInbound(ctx, map[string]any{
+		"remark":         "mcp-itest-masque",
+		"port":           24107,
+		"protocol":       "masque",
+		"settings":       `{"clients":[],"address":["10.14.0.1/24"]}`,
+		"streamSettings": stream,
+		"sniffing":       `{"enabled":false}`,
+		"enable":         true,
+	})
+	if err != nil {
+		t.Fatalf("create_inbound: %v", err)
+	}
+	if !resp.Success {
+		t.Fatalf("create_inbound: panel refused it: %s", resp.Msg)
+	}
+	var created struct {
+		ID int `json:"id"`
+	}
+	if err := json.Unmarshal(resp.Obj, &created); err != nil || created.ID == 0 {
+		t.Fatalf("no inbound id in the create response (%v): %s", err, resp.Obj)
+	}
+	t.Cleanup(func() {
+		if _, err := c.DeleteInbound(context.Background(), created.ID); err != nil {
+			t.Logf("cleaning up inbound %d: %v", created.ID, err)
+		}
+	})
+
+	h := &clientHandler{client: c}
+	const email = "mcp-itest-masque@example.test"
+	t.Cleanup(func() {
+		if _, err := c.DeleteClient(context.Background(), email, false); err != nil {
+			t.Logf("cleaning up client %s: %v", email, err)
+		}
+	})
+	added, err := h.add(ctx, req(map[string]any{"inbound_ids": []any{float64(created.ID)}, "email": email}))
+	if err != nil || added.IsError {
+		t.Fatalf("add_client: %v %+v", err, added)
+	}
+	minted, _ := clientRecord(t, c, email)["password"].(string)
+	if minted == "" {
+		t.Fatal("the panel minted no password for a MASQUE client")
+	}
+
+	updated, err := h.update(ctx, req(map[string]any{"email": email, "comment": "edited"}))
+	if err != nil || updated.IsError {
+		t.Fatalf("update_client: %v %+v", err, updated)
+	}
+	got := clientRecord(t, c, email)
+	if got["password"] != minted || got["comment"] != "edited" {
+		t.Errorf("after update_client, password/comment = %v/%v, want %s/edited", got["password"], got["comment"], minted)
 	}
 }

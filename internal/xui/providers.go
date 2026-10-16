@@ -12,8 +12,8 @@ import (
 // so these tools register an account and hand the outbound to Xray rather than
 // returning anything the caller has to store.
 
-// WarpAction runs one Cloudflare Warp operation: data, config, reg, changeIp,
-// license, interval or del.
+// WarpAction runs one Cloudflare Warp operation: data, config, reg, regMasque,
+// changeIp, license, interval or del.
 func (c *Client) WarpAction(ctx context.Context, action string, params url.Values) (*Response, error) {
 	return c.PostForm(ctx, "panel/api/xray/warp/"+url.PathEscape(action), params)
 }

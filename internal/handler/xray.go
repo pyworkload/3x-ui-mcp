@@ -134,7 +134,7 @@ Example: {"type":"field","outboundTag":"direct","domain":["geosite:category-ru"]
 
 	s.AddTool(mcp.NewTool("set_balancer_override",
 		updatesPanel,
-		mcp.WithDescription("Pin a balancer to one outbound in the running core, bypassing its strategy. Applies immediately without a restart, and is cleared when Xray restarts. "+
+		mcp.WithDescription("Pin a balancer to one outbound in the running core, bypassing its strategy. Applies immediately without a restart, and is cleared when Xray restarts; from panel v3.10.0 it survives routing reloads, and a target the running config does not have is refused. "+
 			"Leave 'target' empty to release the override and hand control back to the strategy. Use get_balancers for valid tags and get_outbounds for target names."),
 		mcp.WithString("tag",
 			mcp.Required(),

@@ -219,6 +219,7 @@ version listed:
 | Subscription balancers, PIA, `reload_node_mtls_client`, and token `scope`/`expires_at` | v3.7.0 |
 | `validate_regex`, `get_factory_defaults`, `get_panel_update_status`, `get_amneziawg_logs` | v3.7.0 |
 | `preview_client_renewal`, the `reset_weekday` client parameter | v3.9.0 |
+| `manage_warp` action `regMasque`, MASQUE inbounds | v3.10.0 |
 
 The last two rows are bounded by the panel's own generated `openapi.json`, which
 only starts at v3.5.0 — some of those routes may predate it.
@@ -247,7 +248,21 @@ and `reset_day` — `update_client` clears the mode being left), and refuses a
 private or loopback target in `get_remote_cert_hash` unless `allow_private` is
 set.
 
-Tested against **v3.9.0**, the current panel release (and before it v3.8.5). Every tool was exercised
+**v3.10.0 added no routes** — one new Warp action and one new protocol. `manage_warp`
+takes `action=regMasque` to register a Warp device over MASQUE; the panel stores
+nothing and answers with the private key, addresses and endpoint for a
+`warp-masque` outbound. MASQUE inbounds sign clients in with email and password:
+`add_client` without `password` lets the panel mint one, and the email must not
+contain `:`. The same release moved a client's WireGuard peer columns
+(`private_key`, `public_key`, `pre_shared_key`, `allowed_ips`, `keep_alive`) under
+the WireGuard/AmneziaWG inbound the client is on: on a client without one,
+`update_client` still succeeds but the panel keeps the stored values. Balancer
+overrides now survive routing reloads (not a core restart), and the panel refuses
+more configs Xray could not run — a Shadowsocks-2022 key of the wrong size, a
+mask password under 4 bytes, an unparsable report or LDAP cron. v3.10.2 changed
+no API.
+
+Tested against **v3.10.2**, the current panel release (and before it v3.9.0 and v3.8.5). Every tool was exercised
 against a live panel: the reads, the writes, the node tools against a second
 panel registered as a node, and the outbound-subscription tools against a URL
 that really serves a list. Four need a configuration this server cannot conjure
@@ -474,7 +489,7 @@ querying a country list is annotated differently from erasing credentials.
 | Tool | Description |
 |---|---|
 | `get_warp_data` | Warp account state or the stored WireGuard config |
-| `manage_warp` | Register, rotate the IP, apply a license, set rotation, or erase |
+| `manage_warp` | Register (WireGuard or MASQUE), rotate the IP, apply a license, set rotation, or erase |
 | `get_nordvpn_data` | Countries, servers in a country, or the stored account |
 | `manage_nordvpn` | Register with a token, set a key, or erase |
 | `get_pia_data` | Regions, servers in a region, or the stored account |

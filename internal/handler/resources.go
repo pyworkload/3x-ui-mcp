@@ -242,7 +242,7 @@ address. One client can be attached to several inbounds at once.
 | ` + "`trafficReset`" + ` / ` + "`trafficResetDay`" + ` | Per-client reset cycle (` + "`never`/`hourly`/`daily`/`weekly`/`monthly`" + `) and the day it fires, independent of the inbound's own |
 | ` + "`reverse`" + ` | VLESS simple reverse proxy, an object holding one ` + "`tag`" + `. The tool parameter is ` + "`reverse_tag`" + `, and an empty string clears it |
 | ` + "`secret`" + ` / ` + "`adTag`" + ` | MTProto per-client secret and the advertising tag from @MTProxybot. ` + "`adTag`" + ` must be exactly 32 hex characters |
-| ` + "`privateKey`" + ` / ` + "`publicKey`" + ` / ` + "`preSharedKey`" + ` / ` + "`allowedIPs`" + ` / ` + "`keepAlive`" + ` | WireGuard and AmneziaWG peer settings. ` + "`allowedIPs`" + ` is an array in a request and a comma-separated string in a reply; ` + "`keepAlive`" + ` is seconds, and 0 sends no keepalive |
+| ` + "`privateKey`" + ` / ` + "`publicKey`" + ` / ` + "`preSharedKey`" + ` / ` + "`allowedIPs`" + ` / ` + "`keepAlive`" + ` | WireGuard and AmneziaWG peer settings. ` + "`allowedIPs`" + ` is an array in a request and a comma-separated string in a reply; ` + "`keepAlive`" + ` is seconds, and 0 sends no keepalive. From panel v3.10.0 they are written only through a WireGuard/AmneziaWG inbound the client is on (the lowest-id one); on a client with no such inbound the panel keeps the stored values without an error |
 | ` + "`forwardedPorts`" + ` | AmneziaWG port forwarding for this peer, e.g. ` + "`80,443,8000-8100`" + ` |
 
 Updates are read-modify-write: ` + "`update_client`" + ` reads the current record and
