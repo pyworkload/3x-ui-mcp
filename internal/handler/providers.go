@@ -35,11 +35,11 @@ func registerProviderTools(s *server.MCPServer, client *xui.Client) {
 
 	s.AddTool(mcp.NewTool("manage_warp",
 		managesRemote,
-		mcp.WithDescription("Change the Cloudflare Warp integration: 'reg' registers an account, 'changeIp' rotates the endpoint IP and marks Xray for restart, 'license' applies a Warp+ license, 'interval' sets the auto-rotation period in days (0 disables), 'del' erases the stored Warp data."),
+		mcp.WithDescription("Change the Cloudflare Warp integration: 'reg' registers an account, 'regMasque' registers a separate device over MASQUE (panel v3.10.0+) and returns its private key, peer public key, addresses and endpoint for a warp-masque outbound — the panel does not store them and leaves the WireGuard registration alone, 'changeIp' rotates the endpoint IP and marks Xray for restart, 'license' applies a Warp+ license, 'interval' sets the auto-rotation period in days (0 disables), 'del' erases the stored Warp data."),
 		mcp.WithString("action",
 			mcp.Required(),
 			mcp.Description("Operation to run"),
-			mcp.Enum("reg", "changeIp", "license", "interval", "del"),
+			mcp.Enum("reg", "regMasque", "changeIp", "license", "interval", "del"),
 		),
 		mcp.WithString("private_key",
 			mcp.Description("WireGuard private key, for action=reg"),

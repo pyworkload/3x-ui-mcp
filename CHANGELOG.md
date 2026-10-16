@@ -17,6 +17,26 @@ Two things a reader of this file usually wants:
 
 ## [Unreleased]
 
+Panel v3.10 support — still **169 tools**.
+
+### Added
+
+- `manage_warp` action `regMasque` — registers a Warp device over MASQUE and
+  returns the private key, addresses and endpoint for a `warp-masque` outbound.
+  The panel stores none of it and leaves the WireGuard registration alone.
+  Panel v3.10.0+.
+
+### Changed
+
+- Parameter descriptions follow v3.10.0: `password` on the client tools covers
+  MASQUE (the panel mints one when it is omitted), the WireGuard peer parameters
+  say they are saved only while the client is on a WireGuard/AmneziaWG inbound,
+  and `set_balancer_override` says an override now survives routing reloads and
+  is refused for a target the running config lacks.
+- `make test-panel` covers v3.10.2: a MASQUE client keeps its minted password
+  across `update_client`, and the peer-column test attaches its client to a
+  WireGuard inbound, the only place v3.10.0 lets those columns change.
+
 ## [0.6.0] - 2026-10-04
 
 Panel v3.9.0 support — **169 tools**.
